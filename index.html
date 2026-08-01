@@ -64,9 +64,10 @@
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
   .fld{display:flex;flex-direction:column;gap:4px;flex:1;min-width:130px}
   .fld label{font-size:12px;color:var(--muted);font-weight:600}
-  select,input[type=date]{padding:9px 10px;border:1px solid var(--line);border-radius:9px;
+  select,input[type=date],input.dtin{padding:9px 10px;border:1px solid var(--line);border-radius:9px;
         font-size:14px;font-family:inherit;background:#fff;color:var(--ink)}
   select:focus,input:focus{outline:none;border-color:var(--teal)}
+  body.dark input.dtin{background:#141a22;color:var(--ink)}
   button{cursor:pointer;font-family:inherit}
   .btn{background:var(--teal);color:#fff;border:none;border-radius:9px;
        padding:10px 18px;font-size:14px;font-weight:600}
@@ -176,7 +177,7 @@
   <div class="card">
     <div class="refline">
       <span>📅 Calculate as of:</span>
-      <input type="date" id="refDate">
+      <input type="text" class="dtin" id="refDate" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" oninput="fmtDateInput(this)">
       <span style="color:var(--muted);font-size:13px">(default: today — change it to check a future date)</span>
     </div>
   </div>
@@ -197,12 +198,12 @@
         <select id="country"></select>
       </div>
       <div class="fld">
-        <label>Entry date</label>
-        <input type="date" id="entry">
+        <label>Entry date (dd/mm/yyyy)</label>
+        <input type="text" class="dtin" id="entry" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" oninput="fmtDateInput(this)">
       </div>
       <div class="fld">
-        <label>Exit date</label>
-        <input type="date" id="exit">
+        <label>Exit date (dd/mm/yyyy)</label>
+        <input type="text" class="dtin" id="exit" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" oninput="fmtDateInput(this)">
       </div>
       <button class="btn" id="addBtn" onclick="addStay()">Add</button>
     </div>
@@ -304,6 +305,7 @@ const LIMIT=90, WINDOW=180, DAY=86400000;
 let stays = [];
 let cryptoKey = null, vaultSalt = null, sessionPin = null;   // encryption state
 let editIndex = -1;   // -1 = adding a new stay; >=0 = editing that row
+let lockSuspended = false, hideTimer = null;   // auto-lock control
 
 // optional real data file (File System Access API); declared here so init can use it
 const FSA = ('showSaveFilePicker' in window) && ('showOpenFilePicker' in window);
@@ -339,7 +341,7 @@ function toggleTheme(){
     document.getElementById('themeBtn').textContent='☀️ Light';
   }
   const today=new Date().toISOString().slice(0,10);
-  document.getElementById('refDate').value=today;
+  document.getElementById('refDate').value=isoToDDMM(today);
   document.getElementById('todayDisp').textContent='📆 Today: '+fmt(parse(today));
   document.getElementById('saveInfo').textContent=
     '🔒 Your trips are encrypted and locked with your PIN. Sync with Google Drive to see them on every device.';
@@ -362,11 +364,28 @@ function parse(d){return new Date(d+"T00:00:00");}
 function fmt(d){const p=n=>String(n).padStart(2,'0');return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();}   // European dd/mm/yyyy
 function inclusiveDays(a,b){return Math.round((b-a)/DAY)+1;}
 
+// dd/mm/yyyy text-input helpers (native date inputs can't be forced to European format)
+function fmtDateInput(el){
+  let v=el.value.replace(/\D/g,'').slice(0,8), out=v;
+  if(v.length>4) out=v.slice(0,2)+'/'+v.slice(2,4)+'/'+v.slice(4);
+  else if(v.length>2) out=v.slice(0,2)+'/'+v.slice(2);
+  el.value=out;
+}
+function toISO(s){
+  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec((s||'').trim());
+  if(!m) return null;
+  const d=+m[1], mo=+m[2], y=+m[3];
+  const iso=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  const dt=new Date(iso+'T00:00:00');
+  return (dt.getFullYear()===y && dt.getMonth()+1===mo && dt.getDate()===d) ? iso : null;
+}
+function isoToDDMM(iso){ if(!iso) return ''; const p=iso.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+
 function addStay(){
   const country=document.getElementById('country').value;
-  const entry=document.getElementById('entry').value;
-  const exit=document.getElementById('exit').value;
-  if(!entry||!exit){return showErr("⚠️ Please fill in both entry and exit dates.");}
+  const entry=toISO(document.getElementById('entry').value);
+  const exit=toISO(document.getElementById('exit').value);
+  if(!entry||!exit){return showErr("⚠️ Enter both dates as dd/mm/yyyy.");}
   if(parse(exit)<parse(entry)){return showErr("⚠️ The exit date is before the entry date — please check.");}
   if(editIndex>=0){ stays[editIndex]={country,entry,exit}; editIndex=-1; document.getElementById('addBtn').textContent='Add'; }
   else { stays.push({country,entry,exit}); }
@@ -378,8 +397,8 @@ function addStay(){
 function editStay(i){
   const s=stays[i];
   document.getElementById('country').value=s.country;
-  document.getElementById('entry').value=s.entry;
-  document.getElementById('exit').value=s.exit;
+  document.getElementById('entry').value=isoToDDMM(s.entry);
+  document.getElementById('exit').value=isoToDDMM(s.exit);
   editIndex=i;
   document.getElementById('addBtn').textContent='Update';
   document.getElementById('country').closest('.card').scrollIntoView({behavior:'smooth',block:'center'});
@@ -435,6 +454,7 @@ async function writeToFile(){
 
 async function saveToFile(){
   if(!FSA){ downloadData(); return; }   // fallback: download a copy
+  suspendLock();
   try{
     fileHandle=await window.showSaveFilePicker({
       suggestedName:'schengen-data.json',
@@ -448,6 +468,7 @@ async function saveToFile(){
 
 async function openFile(){
   if(!FSA){ document.getElementById('importFile').click(); return; }   // fallback: file input
+  suspendLock();
   try{
     const [h]=await window.showOpenFilePicker({
       types:[{description:'Schengen data',accept:{'application/json':['.json']}}]
@@ -544,7 +565,11 @@ function startLock(){
     _le('lockTitle').textContent='Enter your PIN';
     _le('lockMsg').textContent=''; _le('pin2wrap').style.display='none';
     _le('lockBtn').textContent='Unlock'; _le('pinInput').value='';
-    const bio=getBio(); _le('bioBtn').style.display=(bio && window.PublicKeyCredential)?'inline-block':'none';
+    const bio=getBio();
+    if(bio && window.PublicKeyCredential){
+      _le('bioBtn').style.display='inline-block';
+      requestAnimationFrame(()=>setTimeout(()=>biometricUnlock(true), 350));   // auto-prompt fingerprint
+    } else { _le('bioBtn').style.display='none'; }
   }
   showLock(); setTimeout(()=>_le('pinInput').focus(),150);
 }
@@ -586,57 +611,59 @@ function lockNow(){
   cryptoKey=null; sessionPin=null; stays=[]; render();
   startLock();
 }
+// auto-lock when the app is left / backgrounded (short grace + suspend so system dialogs don't trip it)
+function scheduleAutoLock(){
+  clearTimeout(hideTimer);
+  if(document.hidden && cryptoKey && !lockSuspended){
+    hideTimer=setTimeout(()=>{ if(document.hidden && cryptoKey && !lockSuspended) lockNow(); }, 800);
+  }
+}
+document.addEventListener('visibilitychange', scheduleAutoLock);
+function suspendLock(){ lockSuspended=true; setTimeout(()=>{ lockSuspended=false; }, 8000); }
 
 // ---- biometric unlock (Android/Chrome via WebAuthn PRF) — wraps the vault key ----
 function getBio(){ try{ return JSON.parse(localStorage.getItem(LS_BIO)||'null'); }catch(e){ return null; } }
 function updateBioBtn(){ const b=_le('bioEnableBtn'); if(b) b.textContent=getBio()?'👆 Fingerprint on':'👆 Enable fingerprint'; }
-async function getPrfSecret(credId, prfSalt){
-  const a=await navigator.credentials.get({publicKey:{
-    challenge:crypto.getRandomValues(new Uint8Array(32)),
-    allowCredentials:[{type:'public-key', id:_unb64(credId)}],
-    userVerification:'required', extensions:{prf:{eval:{first: prfSalt}}}
-  }});
-  const r=a.getClientExtensionResults();
-  return (r && r.prf && r.prf.results && r.prf.results.first) ? new Uint8Array(r.prf.results.first) : null;
-}
 async function enableBiometric(){
   if(!cryptoKey){ alert('Unlock with your PIN first.'); return; }
   if(getBio()){ if(!confirm('Disable fingerprint unlock?')) return; localStorage.removeItem(LS_BIO); updateBioBtn(); return; }
-  if(!window.PublicKeyCredential){ alert('This device does not support biometric unlock.'); return; }
+  if(!window.PublicKeyCredential){ alert('This device does not support fingerprint.'); return; }
+  suspendLock();
   try{
     const cred=await navigator.credentials.create({publicKey:{
       challenge:crypto.getRandomValues(new Uint8Array(32)),
       rp:{name:'Schengen 90', id:location.hostname},
       user:{id:crypto.getRandomValues(new Uint8Array(16)), name:'schengen', displayName:'Schengen'},
       pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
-      authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'required'},
-      extensions:{prf:{}}
+      authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required'},
+      timeout:60000
     }});
     const credId=_b64(cred.rawId);
-    const prfSalt=crypto.getRandomValues(new Uint8Array(32));
-    const secret=await getPrfSecret(credId, prfSalt);
-    if(!secret){ alert('This device does not support secure fingerprint keys (WebAuthn PRF). Biometric not enabled — your PIN still works.'); return; }
-    const wrapKey=await crypto.subtle.importKey('raw', secret, {name:'AES-GCM'}, false, ['encrypt']);
-    const rawKey=await crypto.subtle.exportKey('raw', cryptoKey);
-    const iv=crypto.getRandomValues(new Uint8Array(12));
-    const wrapped=await crypto.subtle.encrypt({name:'AES-GCM', iv}, wrapKey, rawKey);
-    localStorage.setItem(LS_BIO, JSON.stringify({credId, prfSalt:_b64(prfSalt), iv:_b64(iv), wrapped:_b64(wrapped), salt:_b64(vaultSalt)}));
+    const rawKey=_b64(await crypto.subtle.exportKey('raw', cryptoKey));
+    localStorage.setItem(LS_BIO, JSON.stringify({credId, key:rawKey, salt:_b64(vaultSalt)}));
     updateBioBtn(); alert('Fingerprint unlock enabled. 👆');
   }catch(e){ console.warn(e); alert('Could not enable fingerprint: '+(e.message||e.name)); }
 }
-async function biometricUnlock(){
-  lockErr(''); const bio=getBio(); if(!bio) return;
+// fingerprint verified via WebAuthn assertion → load the stored vault key.
+// `auto`=true when auto-triggered on the lock screen (stay silent if the browser blocks it).
+async function biometricUnlock(auto){
+  const bio=getBio(); if(!bio) return;
+  if(!auto) lockErr('');
   try{
-    const secret=await getPrfSecret(bio.credId, _unb64(bio.prfSalt));
-    if(!secret) return lockErr('Fingerprint key unavailable — use your PIN.');
-    const wrapKey=await crypto.subtle.importKey('raw', secret, {name:'AES-GCM'}, false, ['decrypt']);
-    const raw=await crypto.subtle.decrypt({name:'AES-GCM', iv:_unb64(bio.iv)}, wrapKey, _unb64(bio.wrapped));
-    const key=await crypto.subtle.importKey('raw', raw, {name:'AES-GCM'}, true, ['encrypt','decrypt']);
+    await navigator.credentials.get({publicKey:{
+      challenge:crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials:[{type:'public-key', id:_unb64(bio.credId)}],
+      userVerification:'required', timeout:60000
+    }});
+    const key=await crypto.subtle.importKey('raw', _unb64(bio.key), {name:'AES-GCM'}, true, ['encrypt','decrypt']);
     const v=getVault();
-    if(await decBlob(key, v.verify)!=='schengen-ok') return lockErr('Fingerprint unlock failed — use your PIN.');
+    if(await decBlob(key, v.verify)!=='schengen-ok'){ return lockErr('Fingerprint unlock failed — use your PIN.'); }
     cryptoKey=key; vaultSalt=_unb64(v.salt);
     stays=await decBlob(key, v.data); unlockDone();
-  }catch(e){ console.warn(e); lockErr('Fingerprint unlock failed — use your PIN.'); }
+  }catch(e){
+    if(auto && e && e.name==='NotAllowedError') return;   // browser needs a tap — the button stays
+    console.warn(e); if(!auto) lockErr('Fingerprint unlock failed — use your PIN.');
+  }
 }
 
 // ================= Google Drive sync (optional, online only) =================
@@ -683,7 +710,7 @@ function connectDrive(){
   if(!navigator.onLine){ driveStatus('No internet connection','var(--bad)'); return; }
   if(!gisReady()){ driveStatus('Google is still loading — try again in a moment','var(--warn)'); return; }
   driveStatus('Connecting…','var(--muted)');
-  drivePending='sync';
+  drivePending='sync'; suspendLock();
   requestToken(driveToken?'':'consent');
 }
 
@@ -821,7 +848,7 @@ function checkReentry(){
 }
 
 function render(){
-  const ref=parse(document.getElementById('refDate').value||new Date().toISOString().slice(0,10));
+  const ref=parse(toISO(document.getElementById('refDate').value)||new Date().toISOString().slice(0,10));
   const winStart=new Date(ref.getTime()-(WINDOW-1)*DAY);
 
   const body=document.getElementById('staysBody');
