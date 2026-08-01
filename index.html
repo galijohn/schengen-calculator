@@ -77,6 +77,8 @@
   .flag{border-radius:3px;vertical-align:-3px;margin-right:2px;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
   .del{background:none;border:none;color:var(--bad);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px}
   .del:hover{background:var(--bad-bg)}
+  .edit{background:none;border:none;color:var(--teal-dark);font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;margin-right:2px;cursor:pointer}
+  .edit:hover{background:rgba(22,169,155,.14)}
   .in-win{color:var(--good);font-weight:600}
   .out-win{color:var(--muted)}
   .empty{color:var(--muted);text-align:center;padding:18px;font-size:14px}
@@ -202,7 +204,7 @@
         <label>Exit date</label>
         <input type="date" id="exit">
       </div>
-      <button class="btn" onclick="addStay()">Add</button>
+      <button class="btn" id="addBtn" onclick="addStay()">Add</button>
     </div>
     <p id="addErr" style="color:var(--bad);font-size:13px;margin-top:8px;display:none"></p>
   </div>
@@ -286,6 +288,7 @@ const LIMIT=90, WINDOW=180, DAY=86400000;
 // trips live in memory (plaintext) ONLY after the vault is unlocked with the PIN.
 let stays = [];
 let cryptoKey = null, vaultSalt = null, sessionPin = null;   // encryption state
+let editIndex = -1;   // -1 = adding a new stay; >=0 = editing that row
 
 // optional real data file (File System Access API); declared here so init can use it
 const FSA = ('showSaveFilePicker' in window) && ('showOpenFilePicker' in window);
@@ -350,11 +353,21 @@ function addStay(){
   const exit=document.getElementById('exit').value;
   if(!entry||!exit){return showErr("⚠️ Please fill in both entry and exit dates.");}
   if(parse(exit)<parse(entry)){return showErr("⚠️ The exit date is before the entry date — please check.");}
-  stays.push({country,entry,exit});
+  if(editIndex>=0){ stays[editIndex]={country,entry,exit}; editIndex=-1; document.getElementById('addBtn').textContent='Add'; }
+  else { stays.push({country,entry,exit}); }
   stays.sort((a,b)=>parse(a.entry)-parse(b.entry));
   save(); document.getElementById('addErr').style.display='none';
   document.getElementById('entry').value=''; document.getElementById('exit').value='';
   render();
+}
+function editStay(i){
+  const s=stays[i];
+  document.getElementById('country').value=s.country;
+  document.getElementById('entry').value=s.entry;
+  document.getElementById('exit').value=s.exit;
+  editIndex=i;
+  document.getElementById('addBtn').textContent='Update';
+  document.getElementById('country').closest('.card').scrollIntoView({behavior:'smooth',block:'center'});
 }
 function showErr(m){const e=document.getElementById('addErr');e.textContent=m;e.style.display='block';}
 function del(i){stays.splice(i,1);save();render();}
@@ -815,7 +828,7 @@ function render(){
       <td>${fmt(e)}</td><td>${fmt(x)}</td>
       <td>${total}</td>
       <td class="${winDays>0?'in-win':'out-win'}">${winDays>0?winDays+' ✓':'—'}</td>
-      <td><button class="del" title="Delete" onclick="del(${i})">✕</button></td>`;
+      <td style="white-space:nowrap"><button class="edit" title="Edit" onclick="editStay(${i})">✎</button><button class="del" title="Delete" onclick="del(${i})">✕</button></td>`;
     body.appendChild(tr);
   });
 
