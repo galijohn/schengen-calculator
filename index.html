@@ -896,12 +896,15 @@ function usedOn(ref){
 
 // forward-looking: peak rolling-window usage across all trip end-dates + first date it would exceed 90
 function futureCheck(){
-  const today=parse(new Date().toISOString().slice(0,10));
-  const dates=[today];
-  stays.forEach(s=>{ if(!s.del) dates.push(parse(s.exit)); });
-  dates.sort((a,b)=>a-b);
-  let peak={used:usedOn(today),date:today}, firstOver=null;
-  dates.forEach(D=>{ const u=usedOn(D); if(u>peak.used) peak={used:u,date:D}; if(u>LIMIT && !firstOver) firstOver={used:u,date:D}; });
+  const today=dayNum(parse(new Date().toISOString().slice(0,10)));
+  let lastExit=today;
+  stays.forEach(s=>{ if(!s.del) lastExit=Math.max(lastExit, dayNum(parse(s.exit))); });
+  let peak={used:usedOn(dayToDate(today)),date:dayToDate(today)}, firstOver=null;
+  for(let d=today; d<=lastExit; d++){          // scan every day (the peak/first-over may fall mid-trip)
+    const D=dayToDate(d), u=usedOn(D);
+    if(u>peak.used) peak={used:u,date:D};
+    if(u>LIMIT && !firstOver) firstOver={used:u,date:D};
+  }
   return {peak, firstOver};
 }
 
@@ -981,9 +984,9 @@ function render(){
     planLabel.style.display=''; plan.style.display='';
     const fc=futureCheck();
     if(fc.firstOver){
-      const over=fc.firstOver.used-LIMIT;
+      const over=fc.peak.used-LIMIT;
       plan.className='plan over';
-      planTop.textContent='⚠️ Over by '+over+' day'+(over>1?'s':'')+' on '+fmt(fc.firstOver.date);
+      planTop.textContent='⚠️ Over by '+over+' day'+(over>1?'s':'')+' at the peak ('+fmt(fc.peak.date)+')';
       const safeUntil=dayToDate(dayNum(fc.firstOver.date)-1);
       let fits=null;
       for(let i=0;i<=800;i++){ const D=dayToDate(dayNum(fc.firstOver.date)+i); if(usedOn(D)<LIMIT){ fits=D; break; } }
