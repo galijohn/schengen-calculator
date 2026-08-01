@@ -240,6 +240,19 @@
     <div class="pbody" id="planBody"></div>
   </div>
 
+  <!-- TIMELINE -->
+  <div class="dlabel" id="tlLabel" style="display:none">Timeline <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px">— teal = counted, grey = rolled off</span></div>
+  <div class="card" id="tlCard" style="display:none;padding:18px 16px 12px">
+    <div id="tl" style="position:relative;height:96px;overflow:hidden;border-radius:9px">
+      <div id="tlWin" style="position:absolute;top:24px;height:56px;background:rgba(22,169,155,.11);border-radius:9px"></div>
+      <div id="tlWinStart" style="position:absolute;top:6px;bottom:6px;border-left:1px dashed var(--muted)"></div>
+      <div id="tlToday" style="position:absolute;top:6px;bottom:6px;width:2px;background:var(--teal);z-index:4"><div id="tlTodayLbl" style="position:absolute;top:0;left:50%;transform:translateX(-50%);background:var(--teal);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;white-space:nowrap">today</div></div>
+    </div>
+    <div id="tlMonths" style="position:relative;height:15px;margin-top:4px;font-size:10px;color:var(--muted)"></div>
+    <input type="range" id="tlAsof" step="1" oninput="updateTimeline()" style="width:100%;margin-top:8px;accent-color:var(--teal)">
+    <div style="margin-top:8px;font-size:13.5px;color:var(--muted);text-align:center">180-day window ending <b id="tlLbl" style="color:var(--ink)"></b> · <b id="tlCnt" style="font-size:16px"></b> <span id="tlNote"></span></div>
+  </div>
+
   <!-- ADD STAY -->
   <div class="card">
     <h2>➕ Add a stay</h2>
@@ -940,6 +953,58 @@ function earliestReentry(){
   return null;
 }
 
+// ---- rolling timeline (real trips; window + months scroll together) ----
+let tlBars=[];
+function renderTimeline(){
+  const tl=document.getElementById('tl'), today=document.getElementById('tlToday');
+  tlBars.forEach(b=>b.el.remove()); tlBars=[];
+  const live=stays.filter(s=>!s.del);
+  const card=document.getElementById('tlCard'), label=document.getElementById('tlLabel');
+  if(!live.length){ card.style.display='none'; label.style.display='none'; return; }
+  card.style.display=''; label.style.display='';
+  live.forEach(s=>{
+    const bar=document.createElement('div');
+    bar.style.cssText='position:absolute;top:28px;height:48px;border-radius:7px;background:#4a5563;overflow:hidden;z-index:2';
+    const fill=document.createElement('div'); fill.style.cssText='position:absolute;top:0;bottom:0;left:0;width:0;background:var(--teal)';
+    bar.appendChild(fill);
+    const lab=document.createElement('span'); lab.textContent=s.country;
+    lab.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:600;z-index:1;white-space:nowrap;overflow:hidden;padding:0 4px';
+    bar.appendChild(lab);
+    tl.insertBefore(bar, today);
+    tlBars.push({el:bar, fill, s:dayNum(parse(s.entry)), e:dayNum(parse(s.exit))});
+  });
+  const todayD=dayNum(parse(new Date().toISOString().slice(0,10)));
+  let minE=Infinity, maxE=-Infinity;
+  tlBars.forEach(b=>{ minE=Math.min(minE,b.s); maxE=Math.max(maxE,b.e); });
+  const sMin=Math.min(todayD, minE+90), sMax=Math.max(todayD, maxE+20);
+  const sl=document.getElementById('tlAsof');
+  const cur=sl.dataset.set ? +sl.value : todayD;
+  sl.min=sMin; sl.max=sMax; sl.value=Math.max(sMin,Math.min(sMax,cur)); sl.dataset.set='1';
+  updateTimeline();
+}
+function updateTimeline(){
+  const sl=document.getElementById('tlAsof'); if(!sl) return;
+  const asof=+sl.value, VIS=200, vStart=asof-189;
+  const P=d=>(d-vStart)/VIS*100;
+  document.getElementById('tlWin').style.left=P(asof-179)+'%';
+  document.getElementById('tlWin').style.width=(P(asof+1)-P(asof-179))+'%';
+  document.getElementById('tlWinStart').style.left=P(asof-179)+'%';
+  document.getElementById('tlToday').style.left=P(asof)+'%';
+  document.getElementById('tlTodayLbl').textContent=fmt(dayToDate(asof));
+  document.getElementById('tlLbl').textContent=fmt(dayToDate(asof));
+  let c=0;
+  tlBars.forEach(b=>{ const l=P(b.s), r=P(b.e+1); b.el.style.left=l+'%'; b.el.style.width=(r-l)+'%';
+    const os=Math.max(b.s,asof-179), oe=Math.min(b.e,asof), bw=(r-l)||0.001;
+    if(os<=oe){ c+=oe-os+1; b.fill.style.left=((P(os)-l)/bw*100)+'%'; b.fill.style.width=((P(oe+1)-P(os))/bw*100)+'%'; } else b.fill.style.width='0';
+  });
+  const months=document.getElementById('tlMonths'); months.innerHTML='';
+  const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  for(let d=Math.round(vStart)-2; d<=Math.round(vStart)+VIS+2; d++){ const t2=new Date(d*DAY); if(t2.getUTCDate()===1){ const s=document.createElement('span'); s.textContent=MO[t2.getUTCMonth()]; s.style.cssText='position:absolute;transform:translateX(-50%);white-space:nowrap'; s.style.left=P(d)+'%'; months.appendChild(s);} }
+  const cnt=document.getElementById('tlCnt'), note=document.getElementById('tlNote'), ok=c<=LIMIT;
+  cnt.textContent=c+' / '+LIMIT; cnt.style.color=ok?'var(--good)':'var(--bad)';
+  note.textContent=ok?'in the window':('over by '+(c-LIMIT)); note.style.color=ok?'var(--good)':'var(--bad)';
+}
+
 function render(){
   const ref=parse(new Date().toISOString().slice(0,10));   // always "as of today"
   const refD=dayNum(ref), winStartD=refD-(WINDOW-1);
@@ -1020,6 +1085,8 @@ function render(){
       planBody.innerHTML='<div class="prow"><span class="k"><span class="ic">📈</span>Peak usage</span><span class="v">'+fc.peak.used+' days on '+fmt(fc.peak.date)+'</span></div>';
     }
   }
+
+  renderTimeline();
 }
 </script>
 </body>
