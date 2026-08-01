@@ -153,6 +153,34 @@
   .barwrap{height:10px;background:#eceff2;border-radius:6px;overflow:hidden;margin-top:14px}
   body.dark .barwrap{background:#2c3540}
   .bar{height:100%;background:var(--good);transition:.3s}
+
+  .dlabel{font-size:11.5px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);margin:22px 0 12px}
+  .hero{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:flex;align-items:center;gap:24px;margin-bottom:4px}
+  .gauge{position:relative;width:128px;height:128px;flex:0 0 auto}
+  .gauge .ring{width:128px;height:128px;border-radius:50%;background:conic-gradient(var(--teal) 0 calc(var(--pct,0)*1%), #e6eaee 0)}
+  body.dark .gauge .ring{background:conic-gradient(var(--teal) 0 calc(var(--pct,0)*1%), #2a333e 0)}
+  .gauge .hole{position:absolute;inset:13px;border-radius:50%;background:var(--card);display:grid;place-items:center;text-align:center}
+  .gauge .big{font-size:38px;font-weight:800;line-height:1}
+  .gauge .cap{font-size:11px;color:var(--muted);margin-top:3px}
+  .hero .stats{flex:1;min-width:0}
+  .srow{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
+  .srow:last-of-type{border-bottom:none}
+  .srow .k{color:var(--muted);font-size:13.5px}
+  .srow .v{font-weight:700;font-size:17px}
+  .srow .v.g{color:var(--good)}
+  .win2{font-size:11.5px;color:var(--muted);margin-top:9px}
+  .plan{border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+  .plan .ptop{padding:13px 20px;display:flex;align-items:center;gap:9px;font-weight:700;font-size:16px}
+  .plan .pbody{padding:2px 20px 12px}
+  .plan .prow{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .plan .prow:last-child{border-bottom:none}
+  .plan .prow .k{color:var(--muted);display:flex;align-items:center;gap:9px}
+  .plan .prow .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:14px;background:var(--line)}
+  .plan .prow .v{font-weight:700;font-size:17px}
+  .plan.over{border-color:var(--bad)} .plan.over .ptop{background:var(--bad-bg);color:var(--bad)}
+  .plan.ok{border-color:var(--good)} .plan.ok .ptop{background:var(--good-bg);color:var(--good)}
+  @media(min-width:521px){ #scrollBody{scrollbar-width:none} #scrollBody::-webkit-scrollbar{display:none;width:0} }
+  @media(max-width:560px){ .hero{flex-direction:column;text-align:center;gap:16px} .hero .stats{width:100%} }
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -180,8 +208,8 @@
 
   <header id="topbar">
     <div class="wrap">
-      <h1>Schengen <span class="rule">90 / 180</span> Calculator</h1>
-      <p class="sub" style="margin-bottom:0">Check how many days you've used and how many remain in the Schengen area, for any rolling 180-day window.</p>
+      <h1>Schengen <span class="rule">90 / 180</span></h1>
+      <p class="sub" style="margin-bottom:0">Your rolling 180-day travel allowance</p>
     </div>
   </header>
 
@@ -190,16 +218,27 @@
   <p id="todayDisp" style="font-size:14px;font-weight:600;color:var(--teal-dark);margin:0 0 4px"></p>
   <p id="saveInfo" style="font-size:12px;color:var(--muted);margin:0 0 16px"></p>
 
-  <!-- VERDICT -->
-  <div id="verdict" class="v-good">
-    <div class="big" id="v-days">90</div>
-    <div class="lbl" id="v-lbl">days remaining</div>
-    <div class="note" id="v-note"></div>
-    <div class="barwrap"><div class="bar" id="v-bar" style="width:0%"></div></div>
+  <!-- RIGHT NOW -->
+  <div class="dlabel">Right now</div>
+  <div class="hero">
+    <div class="gauge" id="gauge">
+      <div class="ring" id="ring"></div>
+      <div class="hole"><div><div class="big" id="g-left">90</div><div class="cap">days left</div></div></div>
+    </div>
+    <div class="stats">
+      <div class="srow"><span class="k">Days used</span><span class="v" id="s-used">0</span></div>
+      <div class="srow"><span class="k">Days left today</span><span class="v g" id="s-left">90</span></div>
+      <div class="srow"><span class="k">Allowance</span><span class="v">90</span></div>
+      <div class="win2" id="s-win"></div>
+    </div>
   </div>
 
-  <!-- FUTURE PLANNING CHECK -->
-  <div id="projection" style="display:none;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:14px;font-weight:600;text-align:center"></div>
+  <!-- YOUR PLANNED TRIPS -->
+  <div class="dlabel" id="planLabel" style="display:none">Your planned trips</div>
+  <div class="plan" id="plan" style="display:none">
+    <div class="ptop" id="planTop"></div>
+    <div class="pbody" id="planBody"></div>
+  </div>
 
   <!-- ADD STAY -->
   <div class="card">
@@ -918,45 +957,43 @@ function render(){
   }
 
   const remaining=LIMIT-used;
-  const v=document.getElementById('verdict'),
-        vd=document.getElementById('v-days'), vl=document.getElementById('v-lbl'),
-        vn=document.getElementById('v-note'), bar=document.getElementById('v-bar');
-  v.className='';
-  bar.style.width=Math.min(100,Math.round(used/LIMIT*100))+'%';
-  if(used>LIMIT){
-    v.classList.add('v-bad'); vd.textContent=(used-LIMIT); vl.textContent='days over the limit ❌';
-    vn.textContent=`You've used ${used} of the ${LIMIT} allowed days in the current 180-day window.`;
-    bar.style.background='var(--bad)';
-  } else if(remaining<=10){
-    v.classList.add('v-warn'); vd.textContent=remaining; vl.textContent='days remaining ⚠️';
-    vn.textContent=`You've used ${used} of ${LIMIT} days. Very close to the limit — take care.`;
-    bar.style.background='var(--warn)';
-  } else {
-    v.classList.add('v-good'); vd.textContent=remaining; vl.textContent='days remaining ✓';
-    vn.textContent=`You've used ${used} of ${LIMIT} days in the 180-day window (${fmt(winStart)} – ${fmt(ref)}).`;
-    bar.style.background='var(--good)';
-  }
 
-  // at/over the limit → automatically show the earliest date you can re-enter
-  if(remaining<=0){
-    const r=earliestReentry();
-    if(r && r.i>0) vn.textContent += ` You'll be back under 90 on ${fmt(r.date)} (in ${r.i} day${r.i>1?'s':''}), as older days roll out of the window.`;
-  }
+  // ---- RIGHT NOW: gauge + stats (as of today) ----
+  const pct=Math.min(100,Math.round(used/LIMIT*100));
+  document.getElementById('gauge').style.setProperty('--pct', pct);
+  const gLeft=document.getElementById('g-left');
+  gLeft.textContent = remaining>=0 ? remaining : 0;
+  const clr = remaining<=0 ? 'var(--bad)' : (remaining<=10 ? 'var(--warn)' : 'var(--good)');
+  gLeft.style.color = clr;
+  document.getElementById('s-used').textContent = used;
+  const sLeft=document.getElementById('s-left');
+  sLeft.textContent = remaining>=0 ? remaining : ((used-LIMIT)+' over');
+  sLeft.style.color = clr;
+  document.getElementById('s-win').textContent = 'Rolling window · '+fmt(winStart)+' – '+fmt(ref);
 
-  // forward-looking planning banner (only when there are trips ending in the future)
-  const proj=document.getElementById('projection');
+  // ---- YOUR PLANNED TRIPS: only when there are trips ending in the future ----
+  const planLabel=document.getElementById('planLabel'), plan=document.getElementById('plan');
+  const planTop=document.getElementById('planTop'), planBody=document.getElementById('planBody');
   const today0=parse(new Date().toISOString().slice(0,10));
   const hasFuture=stays.some(s=>!s.del && parse(s.exit)>today0);
-  if(!hasFuture){ proj.style.display='none'; }
+  if(!hasFuture){ planLabel.style.display='none'; plan.style.display='none'; }
   else{
+    planLabel.style.display=''; plan.style.display='';
     const fc=futureCheck();
-    proj.style.display='block';
     if(fc.firstOver){
-      proj.style.background='var(--bad-bg)'; proj.style.color='var(--bad)';
-      proj.innerHTML=`⚠️ Planned trips exceed 90 days — on <b>${fmt(fc.firstOver.date)}</b> you'd reach <b>${fc.firstOver.used}</b> days in the window.`;
+      const over=fc.firstOver.used-LIMIT;
+      plan.className='plan over';
+      planTop.textContent='⚠️ Over by '+over+' day'+(over>1?'s':'')+' on '+fmt(fc.firstOver.date);
+      const safeUntil=dayToDate(dayNum(fc.firstOver.date)-1);
+      let fits=null;
+      for(let i=0;i<=800;i++){ const D=dayToDate(dayNum(fc.firstOver.date)+i); if(usedOn(D)<LIMIT){ fits=D; break; } }
+      planBody.innerHTML=
+        '<div class="prow"><span class="k"><span class="ic">✅</span>Safe to stay until</span><span class="v">'+fmt(safeUntil)+'</span></div>'+
+        (fits?('<div class="prow"><span class="k"><span class="ic">🛫</span>Back under 90 from</span><span class="v">'+fmt(fits)+'</span></div>'):'');
     } else {
-      proj.style.background='var(--good-bg)'; proj.style.color='var(--good)';
-      proj.innerHTML=`✈️ Your planned trips stay within 90 — peak is <b>${fc.peak.used}</b> days on <b>${fmt(fc.peak.date)}</b>.`;
+      plan.className='plan ok';
+      planTop.textContent='✈️ Your plan stays within 90';
+      planBody.innerHTML='<div class="prow"><span class="k"><span class="ic">📈</span>Peak usage</span><span class="v">'+fc.peak.used+' days on '+fmt(fc.peak.date)+'</span></div>';
     }
   }
 }
