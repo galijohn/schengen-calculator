@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schengen 90/180 Calculator</title>
+<style>
+  :root{
+    --teal:#16A99B; --teal-dark:#0F8276;
+    --bg:#f4f6f8; --card:#ffffff; --ink:#1c2431; --muted:#6b7684;
+    --line:#e4e8ec;
+    --good:#1f9d57; --good-bg:#e7f6ed;
+    --bad:#d23c3c; --bad-bg:#fdeaea;
+    --warn:#c9820a; --warn-bg:#fdf3e2;
+    --shadow:0 1px 3px rgba(20,40,60,.08),0 6px 24px rgba(20,40,60,.06);
+  }
+  body.dark{
+    --bg:#12171e; --card:#1b222c; --ink:#e8edf2; --muted:#93a0ad; --line:#2c3540;
+    --good:#3ecb7e; --good-bg:#16332a;
+    --bad:#f06868; --bad-bg:#3a1f22;
+    --warn:#e6a93a; --warn-bg:#3a2f18;
+    --shadow:0 1px 3px rgba(0,0,0,.3),0 6px 24px rgba(0,0,0,.25);
+  }
+  body.dark select,body.dark input[type=date]{background:#141a22;color:var(--ink)}
+  body.dark .chip{background:#213029;border-color:#2f4a42;color:#a7cfc7}
+  body.dark .btn-sm{background:#141a22;color:var(--ink)}
+  body.dark input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.8)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);
+    line-height:1.5;padding:20px;max-width:820px;margin:0 auto;
+  }
+  h1{font-size:24px;font-weight:700;margin-bottom:4px}
+  h1 .rule{color:var(--teal-dark)}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .card h2{font-size:15px;font-weight:700;margin-bottom:14px;color:var(--ink)}
+
+  #verdict{border-radius:14px;padding:20px;text-align:center;margin-bottom:16px;
+           border:1px solid transparent}
+  #verdict .big{font-size:44px;font-weight:800;line-height:1.1}
+  #verdict .lbl{font-size:15px;font-weight:600;margin-top:2px}
+  #verdict .note{font-size:13px;margin-top:8px;opacity:.85}
+  .v-good{background:var(--good-bg);border-color:#bfe6cd!important;color:var(--good)}
+  .v-warn{background:var(--warn-bg);border-color:#f0dcb0!important;color:var(--warn)}
+  .v-bad {background:var(--bad-bg); border-color:#f3c4c4!important;color:var(--bad)}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+  .fld{display:flex;flex-direction:column;gap:4px;flex:1;min-width:130px}
+  .fld label{font-size:12px;color:var(--muted);font-weight:600}
+  select,input[type=date]{padding:9px 10px;border:1px solid var(--line);border-radius:9px;
+        font-size:14px;font-family:inherit;background:#fff;color:var(--ink)}
+  select:focus,input:focus{outline:none;border-color:var(--teal)}
+  button{cursor:pointer;font-family:inherit}
+  .btn{background:var(--teal);color:#fff;border:none;border-radius:9px;
+       padding:10px 18px;font-size:14px;font-weight:600}
+  .btn:hover{background:var(--teal-dark)}
+  .btn-sm{background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:8px;
+       padding:6px 12px;font-size:13px;font-weight:600}
+  .btn-sm:hover{border-color:var(--teal);color:var(--teal-dark)}
+
+  .refline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}
+  .refline input{max-width:170px}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  .flag{border-radius:3px;vertical-align:-3px;margin-right:2px;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+  .del{background:none;border:none;color:var(--bad);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px}
+  .del:hover{background:var(--bad-bg)}
+  .in-win{color:var(--good);font-weight:600}
+  .out-win{color:var(--muted)}
+  .empty{color:var(--muted);text-align:center;padding:18px;font-size:14px}
+
+  .bd{display:flex;justify-content:space-between;align-items:center;
+      padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .bd:last-child{border-bottom:none}
+  .bd .d{font-weight:700;color:var(--teal-dark)}
+
+  .clist{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{background:#eef4f4;border:1px solid #dcebe9;border-radius:20px;
+        padding:4px 11px;font-size:12.5px;color:#2a4a47;cursor:pointer;transition:.15s}
+  .chip:hover{background:var(--teal);border-color:var(--teal);color:#fff}
+  .chip:hover .flag{box-shadow:0 0 0 1px rgba(255,255,255,.4)}
+  .chip:active{transform:scale(.96)}
+  details summary{cursor:pointer;font-size:14px;font-weight:600;color:var(--teal-dark);
+        list-style:none;user-select:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary:before{content:"\25B8  ";}
+  details[open] summary:before{content:"\25BE  ";}
+
+  .disc{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
+  .barwrap{height:10px;background:#eceff2;border-radius:6px;overflow:hidden;margin-top:14px}
+  body.dark .barwrap{background:#2c3540}
+  .bar{height:100%;background:var(--good);transition:.3s}
+</style>
+</head>
+<body>
+
+  <button id="themeBtn" onclick="toggleTheme()"
+    style="position:fixed;top:16px;right:16px;background:var(--card);border:1px solid var(--line);
+    border-radius:20px;padding:6px 12px;font-size:13px;color:var(--ink);box-shadow:var(--shadow);z-index:9">
+    🌙 Dark</button>
+
+  <h1>Schengen <span class="rule">90 / 180</span> Calculator</h1>
+  <p class="sub">Check how many days you've used and how many remain in the Schengen area, for any rolling 180-day window.</p>
+  <p id="todayDisp" style="font-size:14px;font-weight:600;color:var(--teal-dark);margin:0 0 4px"></p>
+  <p id="saveInfo" style="font-size:12px;color:var(--muted);margin:0 0 12px"></p>
+  <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
+    <button class="btn-sm" onclick="saveToFile()">💾 Save to file</button>
+    <button class="btn-sm" onclick="openFile()">📂 Open file</button>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importData(event)">
+    <span id="fileStatus" style="font-size:12px;color:var(--good);font-weight:600"></span>
+  </div>
+
+  <!-- VERDICT -->
+  <div id="verdict" class="v-good">
+    <div class="big" id="v-days">90</div>
+    <div class="lbl" id="v-lbl">days remaining</div>
+    <div class="note" id="v-note"></div>
+    <div class="barwrap"><div class="bar" id="v-bar" style="width:0%"></div></div>
+  </div>
+
+  <!-- REFERENCE DATE -->
+  <div class="card">
+    <div class="refline">
+      <span>📅 Calculate as of:</span>
+      <input type="date" id="refDate">
+      <span style="color:var(--muted);font-size:13px">(default: today — change it to check a future date)</span>
+    </div>
+  </div>
+
+  <!-- RE-ENTRY -->
+  <div class="card">
+    <h2>🔓 When can I re-enter?</h2>
+    <button class="btn" onclick="checkReentry()">Calculate earliest re-entry date</button>
+    <div id="reentryResult" style="margin-top:12px;font-size:14px"></div>
+  </div>
+
+  <!-- ADD STAY -->
+  <div class="card">
+    <h2>➕ Add a stay</h2>
+    <div class="row">
+      <div class="fld">
+        <label>Country (Schengen)</label>
+        <select id="country"></select>
+      </div>
+      <div class="fld">
+        <label>Entry date</label>
+        <input type="date" id="entry">
+      </div>
+      <div class="fld">
+        <label>Exit date</label>
+        <input type="date" id="exit">
+      </div>
+      <button class="btn" onclick="addStay()">Add</button>
+    </div>
+    <p id="addErr" style="color:var(--bad);font-size:13px;margin-top:8px;display:none"></p>
+  </div>
+
+  <!-- STAYS -->
+  <div class="card">
+    <h2>🛫 My stays</h2>
+    <table>
+      <thead><tr><th>Country</th><th>Entry</th><th>Exit</th><th>Days</th><th>In window?</th><th></th></tr></thead>
+      <tbody id="staysBody"></tbody>
+    </table>
+    <div class="empty" id="emptyMsg">No trips yet. Add your first stay above.</div>
+  </div>
+
+  <!-- BREAKDOWN -->
+  <div class="card">
+    <h2>📊 Breakdown by country <span style="font-weight:400;color:var(--muted);font-size:13px">(within the 180-day window)</span></h2>
+    <div id="breakdown"></div>
+  </div>
+
+  <!-- COUNTRIES LIST -->
+  <div class="card">
+    <details>
+      <summary>🗺️ Schengen member states (29) — click one to select it</summary>
+      <div class="clist" id="clist" style="margin-top:12px"></div>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px">
+        Only days spent in these countries are counted. Time outside the area (e.g. Israel, UK, Turkey) is not counted and does not reset your allowance.
+      </p>
+    </details>
+  </div>
+
+  <p class="disc">Estimation aid only, based on the official Schengen calculation method. Not legal advice.</p>
+
+<script>
+// ---- embedded flag images (base64) — works fully offline ----
+const FLAGS = {
+"at":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbAQMAAAA03l8tAAAABlBMVEXIEC7///94b0yLAAAAEklEQVQI12NgIAv8BwGSSbIAADA3LNT5TsD+AAAAAElFTkSuQmCC",
+"be":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAjBAMAAAAUF1WdAAAAD1BMVEXvM0AAAAD92iX4oi2okRgdxzYaAAAAGUlEQVQoz2MQBAMRJTAwYICAUcFRwWEhCADCrTMjCu9IjwAAAABJRU5ErkJggg==",
+"bg":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYAgMAAAD16ldTAAAACVBMVEXWJhIAlm7///+uJ0PXAAAAFUlEQVQY02NYBQcMVGWGwgF1mTQCAF49T7GuEQs4AAAAAElFTkSuQmCC",
+"hr":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAUCAMAAADImI+JAAAAflBMVEUXF5b/i4v/z8//MzP/VFT/bGz/RET/////AABkZLlZk7H/f3//ubn/vLyOi6v1FRhdMoqHZ6isdo5rWaFPcpCmWosrhIr4DA7rsr6tmbGIO3ksFIf/q6v/X1//5OR7DFTgRlC+UVZWSYHnh456M3t+XR/rhozhPkchoeE/gXy+3cuTAAAAjUlEQVQoz9XNxw4DIQxFUQZiQ4Bhem/p5f9/MFGyMwuQssqVV09HMlORsV9g10XArGxGraumzALQteP2rK916wLw/qguWp/c8UDhjjTc4N15oDuTJBQSUQqkuweTxHwuCDlXaao4D0IUK+Ia8RoWC2AXCEL7fW09uCcVZgaYTUF35pX3iH3OYpom9p+9ACjyE1njVuFIAAAAAElFTkSuQmCC",
+"cz":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAMAAAA5zj1cAAAASFBMVEX////J1eIpV4slP3NiMFTMFR709/nXFBoRRX7rio0SRHx4lrZniK01YZGdITa6ydovPW6lIDIUR4BiXoPr7/SrHi+yHCyJo78AN5mYAAAAgElEQVQ4y43MVw6DMAAEUfouDqGX+98UAoowxfbO99NE1RhpmaTRIMmqECGlKfeE6QGZxCKk+RQaDE5p5Z3akN9YhOzdU96kc8q77BcNbg3lS09oMrz1gO0MBZoshwLbCRCge3eFaQcI0LuzoH93wsDuD9MaUGB4t0Nl94PSbmsFe0sUwB2zTMMAAAAASUVORK5CYII=",
+"dk":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAeBAMAAACs80HuAAAAElBMVEXIEC7////WTGPYV2zJFjPigZEAQ1emAAAAJ0lEQVQoz2NgAANHQWEGDDDsBZXAQFFQVAkBGASxAEoFsVo0gkMeAIyVE9snzfM0AAAAAElFTkSuQmCC",
+"ee":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAZBAMAAACx9nFWAAAAD1BMVEUAAAAAHDQAcs5AQED///80rM3yAAAAHklEQVQoz2NQwgIYBqGgIBbAMAiBMRbA4IIFDEJBACXuRRGWf4hoAAAAAElFTkSuQmCC",
+"fi":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYBAMAAAB6qqLzAAAAElBMVEW/ytoAL2z///8bRHw2W4sBL2zkHzVXAAAAKElEQVQY02NQAgFlQUERJQRgGISCYMAMFGRAAoKYQJR+glidNETCEwBPSDATCt0c6gAAAABJRU5ErkJggg==",
+"fr":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbBAMAAAD8PtBdAAAAD1BMVEUAJlT////OESbvr7aqtsYrjF9NAAAAGUlEQVQoz2NgAAMWQTAwUgIDhlHBUUG8ggBpKyX5efKDZQAAAABJRU5ErkJggg==",
+"de":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYAgMAAAD16ldTAAAACVBMVEUAAADdAAD/zgDGIigcAAAAFUlEQVQY02NgoBEIhQPqMlfBAVWZANYST7G6bxb2AAAAAElFTkSuQmCC",
+"gr":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbBAMAAAD8PtBdAAAAElBMVEX///8NXq/l7vceabQ5e73T4vEDTXxUAAAAL0lEQVQoz2MQFBRmUBREBQwkCzowIAPiBaEgEMVM4gUptJ1Cv1MIBLEAEgQH1HYACa0Xnvxthh0AAAAASUVORK5CYII=",
+"hu":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAUBAMAAAANaGKIAAAAD1BMVEVHcFDOKTn///91lHzaXmqHQA4RAAAAHklEQVQY02MQxAIY6CboggUwKGEB9BM0xgIYBhQAADUyITX9PIBgAAAAAElFTkSuQmCC",
+"is":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAdBAMAAAAqZzNAAAAAGFBMVEX///8CUpzcHjXA1Ob40taZudfN3ezt8/jpsXWEAAAAMklEQVQoz2MQBAExJyVWQQRgGH6CxiBg7qTEbowADBDgpMSADJSwABIEsZqJ1faREfIAYs8yr+qW0IYAAAAASUVORK5CYII=",
+"it":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbBAMAAAD8PtBdAAAAElBMVEXOKzcAkkb///+q28EBkkbvt7tlcfnnAAAAGUlEQVQoz2NwFAQBYSUwCGCAgFHBUUG8ggBTFC/I4rFoIQAAAABJRU5ErkJggg==",
+"lv":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAUAQMAAADFiO34AAAABlBMVEWdIjX///941e63AAAAEklEQVQI12NgIBH8BwEsJIkAAKwEE+3AWvguAAAAAElFTkSuQmCC",
+"li":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYCAMAAAC/Wk/yAAAAS1BMVEUAK38AIG41QkIAHVyFch25nCUML27OESYAJnk9OBRNQgp4cj9wZCWpkSx6bCKdhidjWiTjwDM3Sl5YTSEWLVLLqy0ULFPRsC/Pri4yNTSfAAAAWklEQVQoz+2PSw6AIAwFC7RYkK//+59Ub9C6MTFh1pPJewBvYa1ova5n7MGKqC0thFY2yTNIFCNRkpq+ImKqOIsLcz9zv3ZRhCWGh1VxnJ1zhuFbJiVD/L14A/veD1gDpsctAAAAAElFTkSuQmCC",
+"lt":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYAgMAAAD16ldTAAAACVBMVEUAakTBJy39uROFpPmTAAAAFUlEQVQY02NYBQcMVGXSCoTCAVWZADw2T7GdUBaTAAAAAElFTkSuQmCC",
+"lu":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYAgMAAAD16ldTAAAACVBMVEUAod7tKTn////17qLaAAAAFUlEQVQY02MIhQMGqjJXwQF1mTQCADw2T7EmcircAAAAAElFTkSuQmCC",
+"mt":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbBAMAAAD8PtBdAAAAIVBMVEX////PFCv5+fn04OPw29758vPl5eX77u/sztLd3d3g4OCFpgNSAAAARUlEQVQoz2NggANBOGBgYHUJwBRkVjLAEGS1mNYcgC7Iohaa5IAhqKWEKcjukdZSQJRFDOzGBZiCDApYHI/VR6OC1BQEABQgGV7i2R6rAAAAAElFTkSuQmCC",
+"nl":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbAgMAAABzfiX9AAAACVBMVEX///8hRouuHChfbmbQAAAAFUlEQVQY02NYBQcMtGLSAYTCAa2YAJQLWaccQRfwAAAAAElFTkSuQmCC",
+"no":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAdBAMAAAAqZzNAAAAAJFBMVEUAIFv///+6DC+/x9bNSmS6wtKircPAIUHGN1T//v56iqmMmrWaaF9zAAAAO0lEQVQoz2NQAoHCAIbEJiU4YBh+ghMFQQAoKAgHkgzGYLCBYbExAjBQCLCaidV2FxBwBAq6IMDwC3kAfHpfnYepGtcAAAAASUVORK5CYII=",
+"pl":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAZAgMAAAA+toT2AAAACVBMVEXcFDz////tip5hJkzaAAAAFElEQVQY02MIhQOGAWOuggOGQQAAG50ufcR4g+sAAAAASUVORK5CYII=",
+"pt":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAMAAAA5zj1cAAAA3lBMVEX/AAAAZgDjeAn6AAAEYwDcogDtUwqbtwDmXhr5QT76fHz+/v62xOLf5PJ6pgC/zgCpvAD1LwCYswCjuADuYyutwwD6MC/1ZwDXxADjjADuSgDsAADllgDkqgDo3wDkswDvIwDZ1wDSqQBclgDopwDpxADoaxJ+rADcjwreTADrNwCKqwA1fgBRhgDM0gAZbQDq6gDrOgD8EhLvRAr22M3qk1L6OTbsfip4lMmZrNg7hADjFADRggDyBADkmDXcvzH0dFOTrhryRjl9jiS2ozbcXEvrMwAAWgDz9fry9PltbfP7AAAA0ElEQVQ4y+XTxxKCQBAEUNgl56CIAZUgihkQzDn//w95t8rBs/b5naZ7CPItxKf8MKRGEf4CDstl0+s47SLYNaj7KKqvexUYDjTuhuMY9zkvhOBkOg0ZIcsEJtzYGICKMbZ4UZJE3toiBoAGq3ElUZbFEkdXEQDH7ATNF8vlYo7ajg1AljXz/CnLD4unG1UA+gp11WeSNNMPnaAGQMo1zygVhBTtm806dEdFHVxOScLvWi5d0Iw2JI+9fq1RKep6paoaHbT0b9bjM/j/fuYzfAEwIRPN3DfXmAAAAABJRU5ErkJggg==",
+"ro":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbBAMAAAD8PtBdAAAAD1BMVEXOESYAK3/80RaomTjtjxouJjzTAAAAGElEQVQoz2MQBANhJTBwYICAUcFRQbyCAK7MKQicBg83AAAAAElFTkSuQmCC",
+"sk":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAMAAAA5zj1cAAAAYFBMVEULTqLvJi+tepjwNz/6ubyqgqHuICnuHCX////sGyUZTZ394ePzWWAqYqx+c6H7wMPqZG3sSVLJJDn4mJz7ysz4pajoNkFDcLF1gbHog4793t/2h4yfLVCiLU/4pqn5p6vdKimDAAAAqElEQVQ4y93NSQrDMBQE0S8rVkWD59mZ7n/LLAyGQCx5GVKb3jxouZ5M/hD6y56PwkoZY7rOGKOqODRA1wHmCG7l8Oq975+QS6wcQhiGEFIwQ9dhGEKtyRKwWXvv+7VJwFwBtxug4telBpYF0GUUTk37aJ1r720zSfzbiRNx4uLPIsW87VwcCcvWWIqIlCPfsztEZ0WRadIQVdeKM9BayylIxH1CfhS+ARdpGeOgHpAXAAAAAElFTkSuQmCC",
+"si":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAUCAMAAADImI+JAAAAM1BMVEUAAP/a1/ynp/9uLr+/v/+hcM4qANX/////AAC/AEASEuxtJbiOjv9LS/8SEv9qauLr6/+FJ1TWAAAATElEQVQoz93MOw6AMAwE0XViOyH/+5+WgrSgbRASrx4NEgmvhdLmbEKEhlJgVDjGc6gX6yLd9B4217XUQYghRKaD10oNv3CQkEm/Ck8iCRCF/9URPQAAAABJRU5ErkJggg==",
+"es":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAMAAAA5zj1cAAAApVBMVEX6vQCtFRnBPxP3tgCkSRTxsQC9miCtkjL3ugDcdwrVkwndpwauUEi3k3ecLQyvGx01YomtXy3Zhha+gw+4LiCzn4jKeBKyYgjmoAOkXUK/RhC1kJmmKh+0oKCbYwN5OAWWHxSVi0HypQNcdGsDAgC9g1j6vgSWhnLfsSXCn169cE24eBuaNwzQaiOYagW8bxWIOhqoKhPLdq4yUHR+UgVZLWaBHkAs3esWAAAAk0lEQVQ4y+WTVxLDIAxESQwBAwb33tKc3sv9j5YbWJp8JvurNzsrzYpMkCI/BU6RIt9phqIcJSOpEGBu7c2WA+iXOWmbtTmTACh42PdelSgwp+d2nXdvTjuAc3X5vL6qJo4XQEZ9qd8PXaR7yDE5GFOf6XbNRrmB8cgcKaUraJm5z4NiE4RLH3FyIUaG6Pb85XN9AIg9CvrV7UGSAAAAAElFTkSuQmCC",
+"se":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAZAgMAAAA+toT2AAAACVBMVEUAUpP+ywB/j0kXq4KkAAAAGklEQVQY02NgYGCYmsAAA7RmhsIBSUy6OhIASfMjv9uXrDcAAAAASUVORK5CYII=",
+"ch":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoBAMAAAB+0KVeAAAAElBMVEX/AAD/////wMD/gID/YGD/8PBDRn5nAAAANklEQVQoz2NgGLzA2djYBENQUVBQaJALsigBQaCgoCiIdoAKMgsiAQN6C2J10lAJT9yJYfAAAHGvEL146aHXAAAAAElFTkSuQmCC"
+};
+
+// ---- Schengen member states (2026) --- [iso2, name] ----
+const COUNTRIES = [
+  ["at","Austria"],["be","Belgium"],["bg","Bulgaria"],["hr","Croatia"],
+  ["cz","Czechia"],["dk","Denmark"],["ee","Estonia"],["fi","Finland"],
+  ["fr","France"],["de","Germany"],["gr","Greece"],["hu","Hungary"],
+  ["is","Iceland"],["it","Italy"],["lv","Latvia"],["li","Liechtenstein"],
+  ["lt","Lithuania"],["lu","Luxembourg"],["mt","Malta"],["nl","Netherlands"],
+  ["no","Norway"],["pl","Poland"],["pt","Portugal"],["ro","Romania"],
+  ["sk","Slovakia"],["si","Slovenia"],["es","Spain"],["se","Sweden"],
+  ["ch","Switzerland"]
+];
+const LIMIT=90, WINDOW=180, DAY=86400000;
+
+// data lives in the browser's local storage — automatic, no server, no install.
+let stays = [];
+try{ stays = JSON.parse(localStorage.getItem('schengenStays')||'[]'); }catch(e){ stays=[]; }
+
+// optional real data file (File System Access API); declared here so init can use it
+const FSA = ('showSaveFilePicker' in window) && ('showOpenFilePicker' in window);
+let fileHandle = null;
+
+function isoOf(name){ return (COUNTRIES.find(c=>c[1]===name)||["xx"])[0]; }
+function flagFor(name){
+  const iso=isoOf(name), src=FLAGS[iso];
+  return src ? `<img class="flag" src="${src}" width="24" height="18" alt="${iso.toUpperCase()}">`
+             : iso.toUpperCase()+' ';
+}
+
+function toggleTheme(){
+  const dark=document.body.classList.toggle('dark');
+  localStorage.setItem('schengenTheme',dark?'dark':'light');
+  document.getElementById('themeBtn').textContent=dark?'☀️ Light':'🌙 Dark';
+}
+
+(function init(){
+  const sel=document.getElementById('country'), cl=document.getElementById('clist');
+  COUNTRIES.forEach(([iso,n])=>{
+    const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o);
+    const chip=document.createElement('span'); chip.className='chip';
+    chip.innerHTML=flagFor(n)+" "+n; chip.title='Select '+n;
+    chip.onclick=()=>pickCountry(n); cl.appendChild(chip);
+  });
+  if(localStorage.getItem('schengenTheme')==='dark'){
+    document.body.classList.add('dark');
+    document.getElementById('themeBtn').textContent='☀️ Light';
+  }
+  const today=new Date().toISOString().slice(0,10);
+  document.getElementById('refDate').value=today;
+  document.getElementById('todayDisp').textContent='📆 Today: '+fmt(parse(today));
+  document.getElementById('saveInfo').textContent=
+    '💾 Auto-saved in this browser. Click “Save to file” to also keep a real file that updates automatically — copy it to any computer and use “Open file”.';
+  document.getElementById('refDate').addEventListener('change',render);
+  render();
+  tryReconnect();   // silently re-link to your data file if permission is still granted
+})();
+
+// clicking a country in the list selects it in the "Add a stay" dropdown
+function pickCountry(name){
+  document.getElementById('country').value=name;
+  const sel=document.getElementById('country');
+  sel.closest('.card').scrollIntoView({behavior:'smooth',block:'center'});
+  sel.style.transition='box-shadow .2s'; sel.style.boxShadow='0 0 0 3px rgba(22,169,155,.35)';
+  setTimeout(()=>sel.style.boxShadow='',900);
+  document.getElementById('entry').focus();
+}
+
+function parse(d){return new Date(d+"T00:00:00");}
+function fmt(d){const p=n=>String(n).padStart(2,'0');return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();}
+function inclusiveDays(a,b){return Math.round((b-a)/DAY)+1;}
+
+function addStay(){
+  const country=document.getElementById('country').value;
+  const entry=document.getElementById('entry').value;
+  const exit=document.getElementById('exit').value;
+  if(!entry||!exit){return showErr("Please fill in both entry and exit dates.");}
+  if(parse(exit)<parse(entry)){return showErr("Exit date must be on or after the entry date.");}
+  stays.push({country,entry,exit});
+  stays.sort((a,b)=>parse(a.entry)-parse(b.entry));
+  save(); document.getElementById('addErr').style.display='none';
+  document.getElementById('entry').value=''; document.getElementById('exit').value='';
+  render();
+}
+function showErr(m){const e=document.getElementById('addErr');e.textContent=m;e.style.display='block';}
+function del(i){stays.splice(i,1);save();render();}
+function save(){
+  try{ localStorage.setItem('schengenStays',JSON.stringify(stays)); }catch(e){}  // always-on backup
+  if(fileHandle) writeToFile();   // if a real file is linked, auto-update it too
+}
+
+// ---- real data file: Save/Open via File System Access API (Chromium), with
+//      automatic download/upload fallback on browsers that don't support it ----
+function setFileStatus(){
+  const el=document.getElementById('fileStatus'); if(!el) return;
+  el.textContent = fileHandle ? ('🟢 Auto-saving to '+fileHandle.name) : '';
+}
+
+function applyLoaded(text){
+  const arr=JSON.parse(text);
+  if(!Array.isArray(arr)) throw new Error('bad');
+  stays=arr.filter(s=>s&&s.country&&s.entry&&s.exit).map(s=>({country:s.country,entry:s.entry,exit:s.exit}));
+  stays.sort((a,b)=>parse(a.entry)-parse(b.entry));
+  save(); render();
+}
+
+// tiny IndexedDB store to remember the chosen file across sessions
+function idb(op,val){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('schengenDB',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+    r.onerror=()=>rej(r.error);
+    r.onsuccess=()=>{
+      const db=r.result, tx=db.transaction('kv', op==='get'?'readonly':'readwrite'), st=tx.objectStore('kv');
+      const q = op==='get'? st.get('handle') : op==='set'? st.put(val,'handle') : st.delete('handle');
+      q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);
+    };
+  });
+}
+
+async function ensurePermission(mode){
+  if(!fileHandle) return false;
+  if(await fileHandle.queryPermission({mode})==='granted') return true;
+  return (await fileHandle.requestPermission({mode}))==='granted';
+}
+
+async function writeToFile(){
+  if(!fileHandle) return;
+  try{
+    if(!(await ensurePermission('readwrite'))) return;
+    const w=await fileHandle.createWritable();
+    await w.write(JSON.stringify(stays,null,2));
+    await w.close();
+  }catch(e){ console.warn('file write failed',e); }
+}
+
+async function saveToFile(){
+  if(!FSA){ downloadData(); return; }   // fallback: download a copy
+  try{
+    fileHandle=await window.showSaveFilePicker({
+      suggestedName:'schengen-data.json',
+      types:[{description:'Schengen data',accept:{'application/json':['.json']}}]
+    });
+    await writeToFile();
+    try{ await idb('set',fileHandle); }catch(e){}
+    setFileStatus();
+  }catch(e){ if(e.name!=='AbortError') console.warn(e); }
+}
+
+async function openFile(){
+  if(!FSA){ document.getElementById('importFile').click(); return; }   // fallback: file input
+  try{
+    const [h]=await window.showOpenFilePicker({
+      types:[{description:'Schengen data',accept:{'application/json':['.json']}}]
+    });
+    fileHandle=h;
+    if(!(await ensurePermission('readwrite'))){ fileHandle=null; return; }
+    applyLoaded(await (await h.getFile()).text());
+    try{ await idb('set',fileHandle); }catch(e){}
+    setFileStatus();
+  }catch(e){ if(e.name!=='AbortError'){ fileHandle=null; alert('Could not open that file.'); } }
+}
+
+// on load: reconnect silently to the remembered file if permission is still granted
+async function tryReconnect(){
+  if(!FSA) return;
+  try{
+    const h=await idb('get');
+    if(h && await h.queryPermission({mode:'readwrite'})==='granted'){
+      fileHandle=h;
+      applyLoaded(await (await h.getFile()).text());
+      setFileStatus();
+    }
+  }catch(e){}
+}
+
+// fallbacks for non-Chromium browsers
+function downloadData(){
+  const blob=new Blob([JSON.stringify(stays,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='schengen-data.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+function importData(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=()=>{ try{ applyLoaded(reader.result); alert('Loaded '+stays.length+' trip(s).'); }
+                      catch(e){ alert('That file is not a valid Schengen data file.'); } ev.target.value=''; };
+  reader.readAsText(f);
+}
+
+// total Schengen days used within the rolling 180-day window ending on `ref`
+function usedOn(ref){
+  const winStart=new Date(ref.getTime()-(WINDOW-1)*DAY);
+  let used=0;
+  stays.forEach(s=>{
+    const oS=new Date(Math.max(parse(s.entry),winStart)), oE=new Date(Math.min(parse(s.exit),ref));
+    if(oS<=oE) used+=inclusiveDays(oS,oE);
+  });
+  return used;
+}
+
+// earliest future date on which allowance frees up (old days roll out of the 180-day window)
+function checkReentry(){
+  const box=document.getElementById('reentryResult');
+  const today=parse(new Date().toISOString().slice(0,10));
+  let res=null;
+  for(let i=0;i<=366;i++){
+    const D=new Date(today.getTime()+i*DAY);
+    const u=usedOn(D);
+    if(u<LIMIT){ res={D,avail:LIMIT-u,i}; break; }
+  }
+  if(!res){
+    box.innerHTML='<span style="color:var(--bad)">Even a year from now you would still be at the limit — review your entries.</span>';
+    return;
+  }
+  if(res.i===0){
+    box.innerHTML=`<span style="color:var(--good);font-weight:600">✓ You can enter today.</span> `+
+      `You currently have <b>${res.avail}</b> day${res.avail>1?'s':''} available.`;
+  } else {
+    box.innerHTML=`<span style="color:var(--teal-dark);font-weight:700;font-size:16px">${fmt(res.D)}</span> `+
+      `<span style="color:var(--muted)">(in ${res.i} day${res.i>1?'s':''})</span><br>`+
+      `On that date you'll have <b>${res.avail}</b> day${res.avail>1?'s':''} available — and more free up as older stays keep rolling out of the 180-day window.`;
+  }
+}
+
+function render(){
+  const ref=parse(document.getElementById('refDate').value||new Date().toISOString().slice(0,10));
+  const winStart=new Date(ref.getTime()-(WINDOW-1)*DAY);
+
+  const body=document.getElementById('staysBody');
+  body.innerHTML='';
+  document.getElementById('emptyMsg').style.display = stays.length? 'none':'block';
+
+  let used=0; const perCountry={};
+  stays.forEach((s,i)=>{
+    const e=parse(s.entry), x=parse(s.exit);
+    const total=inclusiveDays(e,x);
+    const oS=new Date(Math.max(e,winStart)), oE=new Date(Math.min(x,ref));
+    let winDays=0;
+    if(oS<=oE) winDays=inclusiveDays(oS,oE);
+    used+=winDays;
+    if(winDays>0) perCountry[s.country]=(perCountry[s.country]||0)+winDays;
+
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${flagFor(s.country)}${s.country}</td>
+      <td>${fmt(e)}</td><td>${fmt(x)}</td>
+      <td>${total}</td>
+      <td class="${winDays>0?'in-win':'out-win'}">${winDays>0?winDays+' ✓':'—'}</td>
+      <td><button class="del" title="Delete" onclick="del(${i})">✕</button></td>`;
+    body.appendChild(tr);
+  });
+
+  const bd=document.getElementById('breakdown');
+  const entries=Object.entries(perCountry).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length){ bd.innerHTML='<p class="empty" style="padding:6px 0">No days in the current window.</p>'; }
+  else{
+    bd.innerHTML=entries.map(([c,d])=>
+      `<div class="bd"><span>${flagFor(c)} You spent <b>${d}</b> day${d>1?'s':''} in ${c}</span><span class="d">${d}</span></div>`
+    ).join('') +
+    `<div class="bd" style="border-top:2px solid var(--line);margin-top:6px;padding-top:10px">
+       <span><b>Total in Schengen</b></span><span class="d">${used}</span></div>`;
+  }
+
+  const remaining=LIMIT-used;
+  const v=document.getElementById('verdict'),
+        vd=document.getElementById('v-days'), vl=document.getElementById('v-lbl'),
+        vn=document.getElementById('v-note'), bar=document.getElementById('v-bar');
+  v.className='';
+  bar.style.width=Math.min(100,Math.round(used/LIMIT*100))+'%';
+  if(used>LIMIT){
+    v.classList.add('v-bad'); vd.textContent=(used-LIMIT); vl.textContent='days over the limit ❌';
+    vn.textContent=`You've used ${used} of ${LIMIT} days in the 180-day window. Over the limit.`;
+    bar.style.background='var(--bad)';
+  } else if(remaining<=10){
+    v.classList.add('v-warn'); vd.textContent=remaining; vl.textContent='days remaining ⚠️';
+    vn.textContent=`You've used ${used} of ${LIMIT} days. Very close to the limit — take care.`;
+    bar.style.background='var(--warn)';
+  } else {
+    v.classList.add('v-good'); vd.textContent=remaining; vl.textContent='days remaining ✓';
+    vn.textContent=`You've used ${used} of ${LIMIT} days in the 180-day window (${fmt(winStart)} – ${fmt(ref)}).`;
+    bar.style.background='var(--good)';
+  }
+}
+</script>
+</body>
+</html>
