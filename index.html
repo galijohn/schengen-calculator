@@ -138,8 +138,7 @@
   .lockCard h2{font-size:20px;margin-bottom:6px;color:var(--ink)}
   .lockCard .lmsg{font-size:13px;color:var(--muted);margin-bottom:16px;min-height:0}
   .lockCard input{width:100%;padding:12px;font-size:20px;text-align:center;letter-spacing:6px;
-    border:1px solid var(--line);border-radius:10px;margin-bottom:10px;background:#fff;color:var(--ink);font-family:inherit;
-    -webkit-text-security:disc;text-security:disc}
+    border:1px solid var(--line);border-radius:10px;margin-bottom:10px;background:#fff;color:var(--ink);font-family:inherit}
   .lockCard .btn{width:100%}
   #lockErr{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
   #lockHint{font-size:11px;color:var(--muted);margin-top:14px;line-height:1.4}
@@ -152,17 +151,18 @@
 <body>
 
   <div id="lockScreen">
-    <div class="lockCard">
+    <form class="lockCard" id="lockForm" onsubmit="event.preventDefault();lockSubmit();return false;">
       <img src="icon.svg" alt="">
       <h2 id="lockTitle">Enter your PIN</h2>
       <p class="lmsg" id="lockMsg"></p>
-      <input id="pinInput" type="text" inputmode="numeric" autocomplete="off" name="schengen-pin-x" maxlength="12" placeholder="••••••" onkeydown="if(event.key==='Enter')lockSubmit()">
-      <div id="pin2wrap" style="display:none"><input id="pinInput2" type="text" inputmode="numeric" autocomplete="off" name="schengen-pin2-x" maxlength="12" placeholder="repeat" onkeydown="if(event.key==='Enter')lockSubmit()"></div>
-      <button class="btn" id="lockBtn" onclick="lockSubmit()">Unlock</button>
-      <button class="btn-sm" id="bioBtn" style="display:none;margin-top:8px" onclick="biometricUnlock()">👆 Use fingerprint</button>
+      <input type="text" name="username" value="Schengen 90/180" autocomplete="username" style="display:none" readonly>
+      <input id="pinInput" type="password" inputmode="numeric" autocomplete="current-password" name="password" maxlength="12" placeholder="••••••">
+      <div id="pin2wrap" style="display:none"><input id="pinInput2" type="password" inputmode="numeric" autocomplete="new-password" name="new-password" maxlength="12" placeholder="repeat PIN"></div>
+      <button class="btn" id="lockBtn" type="submit">Unlock</button>
+      <button class="btn-sm" id="bioBtn" type="button" style="display:none;margin-top:8px" onclick="biometricUnlock()">👆 Use fingerprint</button>
       <p id="lockErr"></p>
       <p id="lockHint">🔒 Your trips are encrypted. If you forget this PIN, the data cannot be recovered.</p>
-    </div>
+    </form>
   </div>
 
   <button id="themeBtn" onclick="toggleTheme()"
@@ -574,10 +574,12 @@ function startLock(){
     _le('lockMsg').textContent='This PIN encrypts your trips. Pick at least 6 digits.';
     _le('pin2wrap').style.display='block'; _le('bioBtn').style.display='none';
     _le('lockBtn').textContent='Create'; _le('pinInput').value=''; _le('pinInput2').value='';
+    _le('pinInput').setAttribute('autocomplete','new-password');   // don't autofill old; offer to save new
   } else { lockMode='enter';
     _le('lockTitle').textContent='Enter your PIN';
     _le('lockMsg').textContent=''; _le('pin2wrap').style.display='none';
     _le('lockBtn').textContent='Unlock'; _le('pinInput').value='';
+    _le('pinInput').setAttribute('autocomplete','current-password');   // let Google autofill the saved PIN
     const bio=getBio();
     if(bio && window.PublicKeyCredential){
       _le('bioBtn').style.display='inline-block';
