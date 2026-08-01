@@ -100,6 +100,20 @@
 
   @media(max-width:520px){ h1{padding-right:84px;font-size:22px} body{padding:16px} }
   .disc{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
+
+  /* lock screen */
+  #lockScreen{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#16A99B,#0F8276);padding:20px}
+  .lockCard{background:var(--card);border-radius:20px;padding:28px 24px;max-width:340px;width:100%;
+    text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .lockCard img{width:72px;height:72px;margin-bottom:12px}
+  .lockCard h2{font-size:20px;margin-bottom:6px;color:var(--ink)}
+  .lockCard .lmsg{font-size:13px;color:var(--muted);margin-bottom:16px;min-height:0}
+  .lockCard input{width:100%;padding:12px;font-size:20px;text-align:center;letter-spacing:6px;
+    border:1px solid var(--line);border-radius:10px;margin-bottom:10px;background:#fff;color:var(--ink);font-family:inherit}
+  .lockCard .btn{width:100%}
+  #lockErr{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
+  #lockHint{font-size:11px;color:var(--muted);margin-top:14px;line-height:1.4}
   .barwrap{height:10px;background:#eceff2;border-radius:6px;overflow:hidden;margin-top:14px}
   body.dark .barwrap{background:#2c3540}
   .bar{height:100%;background:var(--good);transition:.3s}
@@ -107,6 +121,20 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
+
+  <div id="lockScreen">
+    <div class="lockCard">
+      <img src="icon.svg" alt="">
+      <h2 id="lockTitle">Enter your PIN</h2>
+      <p class="lmsg" id="lockMsg"></p>
+      <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="••••••" onkeydown="if(event.key==='Enter')lockSubmit()">
+      <div id="pin2wrap" style="display:none"><input id="pinInput2" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="repeat PIN" onkeydown="if(event.key==='Enter')lockSubmit()"></div>
+      <button class="btn" id="lockBtn" onclick="lockSubmit()">Unlock</button>
+      <button class="btn-sm" id="bioBtn" style="display:none;margin-top:8px" onclick="biometricUnlock()">👆 Use fingerprint</button>
+      <p id="lockErr"></p>
+      <p id="lockHint">🔒 Your trips are encrypted. If you forget this PIN, the data cannot be recovered.</p>
+    </div>
+  </div>
 
   <button id="themeBtn" onclick="toggleTheme()"
     style="position:fixed;top:16px;right:16px;background:var(--card);border:1px solid var(--line);
@@ -123,9 +151,13 @@
     <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importData(event)">
     <span id="fileStatus" style="font-size:12px;color:var(--good);font-weight:600"></span>
   </div>
-  <div style="display:flex;gap:8px;margin:0 0 20px;flex-wrap:wrap;align-items:center">
+  <div style="display:flex;gap:8px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
     <button class="btn-sm" id="driveBtn" onclick="connectDrive()">☁️ Sync with Google Drive</button>
     <span id="driveStatus" style="font-size:12px;font-weight:600;color:var(--muted)"></span>
+  </div>
+  <div style="display:flex;gap:8px;margin:0 0 20px;flex-wrap:wrap;align-items:center">
+    <button class="btn-sm" id="bioEnableBtn" onclick="enableBiometric()">👆 Enable fingerprint</button>
+    <button class="btn-sm" onclick="lockNow()">🔒 Lock now</button>
   </div>
 
   <!-- VERDICT -->
@@ -249,9 +281,9 @@ const COUNTRIES = [
 ];
 const LIMIT=90, WINDOW=180, DAY=86400000;
 
-// data lives in the browser's local storage — automatic, no server, no install.
+// trips live in memory (plaintext) ONLY after the vault is unlocked with the PIN.
 let stays = [];
-try{ stays = JSON.parse(localStorage.getItem('schengenStays')||'[]'); }catch(e){ stays=[]; }
+let cryptoKey = null, vaultSalt = null, sessionPin = null;   // encryption state
 
 // optional real data file (File System Access API); declared here so init can use it
 const FSA = ('showSaveFilePicker' in window) && ('showOpenFilePicker' in window);
@@ -290,11 +322,9 @@ function toggleTheme(){
   document.getElementById('refDate').value=today;
   document.getElementById('todayDisp').textContent='📆 Today: '+fmt(parse(today));
   document.getElementById('saveInfo').textContent=
-    '💾 Auto-saved in this browser. Click “Save to file” to also keep a real file that updates automatically — copy it to any computer and use “Open file”.';
+    '🔒 Your trips are encrypted and locked with your PIN. Sync with Google Drive to see them on every device.';
   document.getElementById('refDate').addEventListener('change',render);
-  render();
-  tryReconnect();       // silently re-link to your data file if permission is still granted
-  driveAutoReconnect(); // silently re-sync with Google Drive if a valid token is cached
+  startLock();   // show the PIN screen; loading/sync happens after unlock
 })();
 
 // clicking a country in the list selects it in the "Add a stay" dropdown
@@ -325,11 +355,7 @@ function addStay(){
 }
 function showErr(m){const e=document.getElementById('addErr');e.textContent=m;e.style.display='block';}
 function del(i){stays.splice(i,1);save();render();}
-function save(){
-  try{ localStorage.setItem('schengenStays',JSON.stringify(stays)); }catch(e){}  // always-on backup
-  if(fileHandle) writeToFile();   // if a real file is linked, auto-update it too
-  if(driveConnected) schedulePush();   // if synced with Google Drive, push there too
-}
+function save(){ persistVault(); }   // encrypt + persist to localStorage, file, and Drive
 
 // ---- real data file: Save/Open via File System Access API (Chromium), with
 //      automatic download/upload fallback on browsers that don't support it ----
@@ -338,12 +364,12 @@ function setFileStatus(){
   el.textContent = fileHandle ? ('🟢 Auto-saving to '+fileHandle.name) : '';
 }
 
-function applyLoaded(text){
-  const arr=JSON.parse(text);
-  if(!Array.isArray(arr)) throw new Error('bad');
-  stays=arr.filter(s=>s&&s.country&&s.entry&&s.exit).map(s=>({country:s.country,entry:s.entry,exit:s.exit}));
-  stays.sort((a,b)=>parse(a.entry)-parse(b.entry));
-  save(); render();
+// load trips from any object: plaintext array, {stays}, or an encrypted vault
+async function loadFromObj(obj){
+  const arr=await decryptCloud(obj);
+  if(arr===null){ alert('This data was encrypted with a different PIN.'); return false; }
+  stays=mergeStays(stays, arr);
+  render(); save(); return true;
 }
 
 // tiny IndexedDB store to remember the chosen file across sessions
@@ -367,11 +393,11 @@ async function ensurePermission(mode){
 }
 
 async function writeToFile(){
-  if(!fileHandle) return;
+  if(!fileHandle || !cryptoKey) return;
   try{
     if(!(await ensurePermission('readwrite'))) return;
     const w=await fileHandle.createWritable();
-    await w.write(JSON.stringify(stays,null,2));
+    await w.write(JSON.stringify(await buildVault()));   // encrypted vault, never plaintext
     await w.close();
   }catch(e){ console.warn('file write failed',e); }
 }
@@ -397,7 +423,7 @@ async function openFile(){
     });
     fileHandle=h;
     if(!(await ensurePermission('readwrite'))){ fileHandle=null; return; }
-    applyLoaded(await (await h.getFile()).text());
+    await loadFromObj(JSON.parse(await (await h.getFile()).text()));
     try{ await idb('set',fileHandle); }catch(e){}
     setFileStatus();
   }catch(e){ if(e.name!=='AbortError'){ fileHandle=null; alert('Could not open that file.'); } }
@@ -410,15 +436,15 @@ async function tryReconnect(){
     const h=await idb('get');
     if(h && await h.queryPermission({mode:'readwrite'})==='granted'){
       fileHandle=h;
-      applyLoaded(await (await h.getFile()).text());
+      try{ await loadFromObj(JSON.parse(await (await h.getFile()).text())); }catch(e){}
       setFileStatus();
     }
   }catch(e){}
 }
 
-// fallbacks for non-Chromium browsers
-function downloadData(){
-  const blob=new Blob([JSON.stringify(stays,null,2)],{type:'application/json'});
+// fallbacks for non-Chromium browsers (write the encrypted vault, never plaintext)
+async function downloadData(){
+  const blob=new Blob([JSON.stringify(await buildVault())],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='schengen-data.json';
   document.body.appendChild(a); a.click(); a.remove();
@@ -427,9 +453,159 @@ function downloadData(){
 function importData(ev){
   const f=ev.target.files[0]; if(!f) return;
   const reader=new FileReader();
-  reader.onload=()=>{ try{ applyLoaded(reader.result); alert('Loaded '+stays.length+' trip(s).'); }
+  reader.onload=()=>{ try{ loadFromObj(JSON.parse(reader.result)); }
                       catch(e){ alert('That file is not a valid Schengen data file.'); } ev.target.value=''; };
   reader.readAsText(f);
+}
+
+// ================= Privacy: PIN encryption + lock screen (Web Crypto) =================
+const LS_VAULT='schengenVault', LS_BIO='schengenBio';
+const _enc=new TextEncoder(), _dec=new TextDecoder();
+const _b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
+const _unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+
+async function deriveKey(pin, salt){
+  const base=await crypto.subtle.importKey('raw', _enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:210000, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+}
+async function encBlob(key, obj){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, _enc.encode(JSON.stringify(obj)));
+  return {iv:_b64(iv), ct:_b64(ct)};
+}
+async function decBlob(key, blob){
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM', iv:_unb64(blob.iv)}, key, _unb64(blob.ct));
+  return JSON.parse(_dec.decode(pt));
+}
+function getVault(){ try{ return JSON.parse(localStorage.getItem(LS_VAULT)||'null'); }catch(e){ return null; } }
+function isVault(o){ return !!(o && o.v && o.salt && o.verify && o.data); }
+async function buildVault(){
+  return { v:1, salt:_b64(vaultSalt),
+           verify: await encBlob(cryptoKey,'schengen-ok'),
+           data:   await encBlob(cryptoKey, stays),
+           updatedAt: Date.now() };
+}
+// encrypt + persist everywhere: localStorage + linked file + Google Drive
+async function persistVault(){
+  if(!cryptoKey) return;
+  const vault=await buildVault();
+  try{ localStorage.setItem(LS_VAULT, JSON.stringify(vault)); }catch(e){}
+  if(fileHandle) writeToFile();
+  if(driveConnected) schedulePush();
+}
+
+// ---- lock screen ----
+let lockMode='enter';
+const _le=id=>document.getElementById(id);
+function showLock(){ _le('lockScreen').style.display='flex'; }
+function hideLock(){ _le('lockScreen').style.display='none'; }
+function lockErr(m){ _le('lockErr').textContent=m||''; }
+
+function startLock(){
+  const v=getVault();
+  if(!isVault(v)){ lockMode='setup';
+    _le('lockTitle').textContent='Create a PIN';
+    _le('lockMsg').textContent='This PIN encrypts your trips. Pick at least 6 digits.';
+    _le('pin2wrap').style.display='block'; _le('bioBtn').style.display='none';
+    _le('lockBtn').textContent='Create'; _le('pinInput').value=''; _le('pinInput2').value='';
+  } else { lockMode='enter';
+    _le('lockTitle').textContent='Enter your PIN';
+    _le('lockMsg').textContent=''; _le('pin2wrap').style.display='none';
+    _le('lockBtn').textContent='Unlock'; _le('pinInput').value='';
+    const bio=getBio(); _le('bioBtn').style.display=(bio && window.PublicKeyCredential)?'inline-block':'none';
+  }
+  showLock(); setTimeout(()=>_le('pinInput').focus(),150);
+}
+async function lockSubmit(){
+  lockErr('');
+  const pin=_le('pinInput').value.trim();
+  if(lockMode==='setup'){
+    const pin2=_le('pinInput2').value.trim();
+    if(!/^\d{6,}$/.test(pin)) return lockErr('PIN must be at least 6 digits.');
+    if(pin!==pin2) return lockErr('The two PINs do not match.');
+    await doSetup(pin);
+  } else {
+    if(!pin) return lockErr('Enter your PIN.');
+    await doUnlock(pin);
+  }
+}
+async function doSetup(pin){
+  vaultSalt=crypto.getRandomValues(new Uint8Array(16));
+  sessionPin=pin; cryptoKey=await deriveKey(pin, vaultSalt);
+  let old=[]; try{ old=JSON.parse(localStorage.getItem('schengenStays')||'[]'); }catch(e){}
+  stays=Array.isArray(old)?old.filter(s=>s&&s.country&&s.entry&&s.exit):[];
+  localStorage.removeItem('schengenStays');
+  await persistVault(); unlockDone();
+}
+async function doUnlock(pin){
+  const v=getVault(); if(!isVault(v)) return startLock();
+  const salt=_unb64(v.salt), key=await deriveKey(pin, salt);
+  try{ if(await decBlob(key, v.verify)!=='schengen-ok') throw 0; }
+  catch(e){ return lockErr('Wrong PIN. Try again.'); }
+  cryptoKey=key; vaultSalt=salt; sessionPin=pin;
+  try{ stays=await decBlob(key, v.data); }catch(e){ stays=[]; }
+  unlockDone();
+}
+function unlockDone(){
+  hideLock(); render(); updateBioBtn();
+  tryReconnect(); driveAutoReconnect();
+}
+function lockNow(){
+  cryptoKey=null; sessionPin=null; stays=[]; render();
+  startLock();
+}
+
+// ---- biometric unlock (Android/Chrome via WebAuthn PRF) — wraps the vault key ----
+function getBio(){ try{ return JSON.parse(localStorage.getItem(LS_BIO)||'null'); }catch(e){ return null; } }
+function updateBioBtn(){ const b=_le('bioEnableBtn'); if(b) b.textContent=getBio()?'👆 Fingerprint on':'👆 Enable fingerprint'; }
+async function getPrfSecret(credId, prfSalt){
+  const a=await navigator.credentials.get({publicKey:{
+    challenge:crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials:[{type:'public-key', id:_unb64(credId)}],
+    userVerification:'required', extensions:{prf:{eval:{first: prfSalt}}}
+  }});
+  const r=a.getClientExtensionResults();
+  return (r && r.prf && r.prf.results && r.prf.results.first) ? new Uint8Array(r.prf.results.first) : null;
+}
+async function enableBiometric(){
+  if(!cryptoKey){ alert('Unlock with your PIN first.'); return; }
+  if(getBio()){ if(!confirm('Disable fingerprint unlock?')) return; localStorage.removeItem(LS_BIO); updateBioBtn(); return; }
+  if(!window.PublicKeyCredential){ alert('This device does not support biometric unlock.'); return; }
+  try{
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge:crypto.getRandomValues(new Uint8Array(32)),
+      rp:{name:'Schengen 90', id:location.hostname},
+      user:{id:crypto.getRandomValues(new Uint8Array(16)), name:'schengen', displayName:'Schengen'},
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'required'},
+      extensions:{prf:{}}
+    }});
+    const credId=_b64(cred.rawId);
+    const prfSalt=crypto.getRandomValues(new Uint8Array(32));
+    const secret=await getPrfSecret(credId, prfSalt);
+    if(!secret){ alert('This device does not support secure fingerprint keys (WebAuthn PRF). Biometric not enabled — your PIN still works.'); return; }
+    const wrapKey=await crypto.subtle.importKey('raw', secret, {name:'AES-GCM'}, false, ['encrypt']);
+    const rawKey=await crypto.subtle.exportKey('raw', cryptoKey);
+    const iv=crypto.getRandomValues(new Uint8Array(12));
+    const wrapped=await crypto.subtle.encrypt({name:'AES-GCM', iv}, wrapKey, rawKey);
+    localStorage.setItem(LS_BIO, JSON.stringify({credId, prfSalt:_b64(prfSalt), iv:_b64(iv), wrapped:_b64(wrapped), salt:_b64(vaultSalt)}));
+    updateBioBtn(); alert('Fingerprint unlock enabled. 👆');
+  }catch(e){ console.warn(e); alert('Could not enable fingerprint: '+(e.message||e.name)); }
+}
+async function biometricUnlock(){
+  lockErr(''); const bio=getBio(); if(!bio) return;
+  try{
+    const secret=await getPrfSecret(bio.credId, _unb64(bio.prfSalt));
+    if(!secret) return lockErr('Fingerprint key unavailable — use your PIN.');
+    const wrapKey=await crypto.subtle.importKey('raw', secret, {name:'AES-GCM'}, false, ['decrypt']);
+    const raw=await crypto.subtle.decrypt({name:'AES-GCM', iv:_unb64(bio.iv)}, wrapKey, _unb64(bio.wrapped));
+    const key=await crypto.subtle.importKey('raw', raw, {name:'AES-GCM'}, true, ['encrypt','decrypt']);
+    const v=getVault();
+    if(await decBlob(key, v.verify)!=='schengen-ok') return lockErr('Fingerprint unlock failed — use your PIN.');
+    cryptoKey=key; vaultSalt=_unb64(v.salt);
+    stays=await decBlob(key, v.data); unlockDone();
+  }catch(e){ console.warn(e); lockErr('Fingerprint unlock failed — use your PIN.'); }
 }
 
 // ================= Google Drive sync (optional, online only) =================
@@ -509,16 +685,39 @@ async function driveUpdate(id,text){
   if(!r.ok) throw new Error('update '+r.status);
 }
 
+// decrypt a Google-Drive payload into a trips array: handles old plaintext AND encrypted vaults.
+// Returns null if it's an encrypted vault we can't open (a different PIN).
+async function decryptCloud(cloud){
+  if(Array.isArray(cloud)) return cloud;                        // very old plaintext array
+  if(cloud && Array.isArray(cloud.stays)) return cloud.stays;   // old {stays} plaintext
+  if(isVault(cloud)){
+    try{ if(await decBlob(cryptoKey, cloud.verify)==='schengen-ok') return await decBlob(cryptoKey, cloud.data); }catch(e){}
+    if(sessionPin){   // another device's salt — re-derive from the same PIN, then adopt it
+      try{ const k=await deriveKey(sessionPin, _unb64(cloud.salt));
+           if(await decBlob(k, cloud.verify)==='schengen-ok'){ cryptoKey=k; vaultSalt=_unb64(cloud.salt); return await decBlob(k, cloud.data); } }catch(e){}
+    }
+    return null;   // encrypted with a different PIN
+  }
+  return [];
+}
+
 // pull → merge → push (never a blind overwrite — the John-Finance data-loss lesson)
 async function doFullSync(){
   try{
+    if(!cryptoKey){ driveStatus('Unlock first','var(--warn)'); return; }
     driveStatus('Syncing…','var(--muted)');
-    let cloud={stays:[]};
+    let cloud=null;
     const f=await driveFind();
-    if(f){ driveFileId=f.id; try{ cloud=await driveRead(f.id); }catch(e){ cloud={stays:[]}; } }
-    stays=mergeStays(stays, cloud.stays); render();
-    try{ localStorage.setItem('schengenStays',JSON.stringify(stays)); }catch(e){}
-    const payload=JSON.stringify({stays,updatedAt:Date.now()});
+    if(f){ driveFileId=f.id; try{ cloud=await driveRead(f.id); }catch(e){} }
+    if(cloud!==null){
+      const cloudStays=await decryptCloud(cloud);
+      if(cloudStays===null){ driveStatus('Cloud data uses a different PIN','var(--bad)'); return; }
+      stays=mergeStays(stays, cloudStays); render();
+    }
+    const vault=await buildVault();
+    try{ localStorage.setItem(LS_VAULT, JSON.stringify(vault)); }catch(e){}
+    if(fileHandle) writeToFile();
+    const payload=JSON.stringify(vault);
     if(driveFileId) await driveUpdate(driveFileId,payload); else driveFileId=await driveCreate(payload);
     driveConnected=true;
     try{ localStorage.setItem('schengenDriveOn','1'); }catch(e){}
@@ -532,9 +731,10 @@ function schedulePush(){
   pushTimer=setTimeout(()=>{ if(tokenValid()) doPush(); else { drivePending='push'; requestToken(''); } }, 900);
 }
 async function doPush(){
+  if(!cryptoKey) return;
   try{
     driveStatus('Saving…','var(--muted)');
-    const payload=JSON.stringify({stays,updatedAt:Date.now()});
+    const payload=JSON.stringify(await buildVault());   // encrypted vault
     if(driveFileId) await driveUpdate(driveFileId,payload); else driveFileId=await driveCreate(payload);
     driveStatus('🟢 Synced across your devices','var(--good)');
   }catch(e){ console.warn('drive push failed',e); driveStatus('Save failed — check connection','var(--bad)'); }
