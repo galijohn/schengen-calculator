@@ -90,11 +90,13 @@
   details summary:before{content:"\25B8  ";}
   details[open] summary:before{content:"\25BE  ";}
 
+  @media(max-width:520px){ h1{padding-right:84px;font-size:22px} body{padding:16px} }
   .disc{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
   .barwrap{height:10px;background:#eceff2;border-radius:6px;overflow:hidden;margin-top:14px}
   body.dark .barwrap{background:#2c3540}
   .bar{height:100%;background:var(--good);transition:.3s}
 </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -112,6 +114,10 @@
     <button class="btn-sm" onclick="openFile()">📂 Open file</button>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importData(event)">
     <span id="fileStatus" style="font-size:12px;color:var(--good);font-weight:600"></span>
+  </div>
+  <div style="display:flex;gap:8px;margin:0 0 20px;flex-wrap:wrap;align-items:center">
+    <button class="btn-sm" id="driveBtn" onclick="connectDrive()">☁️ Sync with Google Drive</button>
+    <span id="driveStatus" style="font-size:12px;font-weight:600;color:var(--muted)"></span>
   </div>
 
   <!-- VERDICT -->
@@ -243,6 +249,10 @@ try{ stays = JSON.parse(localStorage.getItem('schengenStays')||'[]'); }catch(e){
 const FSA = ('showSaveFilePicker' in window) && ('showOpenFilePicker' in window);
 let fileHandle = null;
 
+// optional Google Drive sync state (declared here so save()/init can reference it)
+let driveConnected = false, driveToken = null, driveTokenExp = 0,
+    driveFileId = null, tokenClient = null, drivePending = null, pushTimer = null;
+
 function isoOf(name){ return (COUNTRIES.find(c=>c[1]===name)||["xx"])[0]; }
 function flagFor(name){
   const iso=isoOf(name), src=FLAGS[iso];
@@ -275,7 +285,8 @@ function toggleTheme(){
     '💾 Auto-saved in this browser. Click “Save to file” to also keep a real file that updates automatically — copy it to any computer and use “Open file”.';
   document.getElementById('refDate').addEventListener('change',render);
   render();
-  tryReconnect();   // silently re-link to your data file if permission is still granted
+  tryReconnect();       // silently re-link to your data file if permission is still granted
+  driveAutoReconnect(); // silently re-sync with Google Drive if a valid token is cached
 })();
 
 // clicking a country in the list selects it in the "Add a stay" dropdown
@@ -309,6 +320,7 @@ function del(i){stays.splice(i,1);save();render();}
 function save(){
   try{ localStorage.setItem('schengenStays',JSON.stringify(stays)); }catch(e){}  // always-on backup
   if(fileHandle) writeToFile();   // if a real file is linked, auto-update it too
+  if(driveConnected) schedulePush();   // if synced with Google Drive, push there too
 }
 
 // ---- real data file: Save/Open via File System Access API (Chromium), with
@@ -410,6 +422,128 @@ function importData(ev){
   reader.onload=()=>{ try{ applyLoaded(reader.result); alert('Loaded '+stays.length+' trip(s).'); }
                       catch(e){ alert('That file is not a valid Schengen data file.'); } ev.target.value=''; };
   reader.readAsText(f);
+}
+
+// ================= Google Drive sync (optional, online only) =================
+// Reuses the John-Finance OAuth client (same galijohn.github.io host, so its
+// authorised origin already covers this page) with the sandboxed drive.file scope.
+const DRIVE_CLIENT_ID='831800526620-vrar20hjjjne49jrr6gpv9dmr54224g5.apps.googleusercontent.com';
+const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.file';
+const DRIVE_FILENAME='schengen-data.json';
+
+function driveStatus(msg,color){ const el=document.getElementById('driveStatus'); if(el){ el.textContent=msg||''; el.style.color=color||'var(--muted)'; } }
+function driveBtnLabel(t){ const b=document.getElementById('driveBtn'); if(b) b.textContent=t; }
+function gisReady(){ return typeof google!=='undefined' && google.accounts && google.accounts.oauth2; }
+function tokenValid(){ return driveToken && Date.now()<driveTokenExp; }
+
+// merge two trip lists without ever losing an entry (union by country|entry|exit)
+function sig(s){ return s.country+'|'+s.entry+'|'+s.exit; }
+function mergeStays(a,b){
+  const m=new Map();
+  [...(a||[]),...(b||[])].forEach(s=>{ if(s&&s.country&&s.entry&&s.exit) m.set(sig(s),{country:s.country,entry:s.entry,exit:s.exit}); });
+  return [...m.values()].sort((x,y)=>parse(x.entry)-parse(y.entry));
+}
+
+function makeTokenClient(){
+  if(tokenClient || !gisReady()) return tokenClient;
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:DRIVE_CLIENT_ID, scope:DRIVE_SCOPE,
+    callback:(resp)=>{
+      if(resp && resp.access_token){
+        driveToken=resp.access_token;
+        driveTokenExp=Date.now()+((resp.expires_in||3600)-60)*1000;
+        try{ localStorage.setItem('schengenDriveTok',JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){}
+        const act=drivePending; drivePending=null;
+        if(act==='push') doPush(); else doFullSync();
+      } else { driveStatus('Google sign-in failed','var(--bad)'); }
+    }
+  });
+  return tokenClient;
+}
+
+function requestToken(prompt){ const tc=makeTokenClient(); if(tc) tc.requestAccessToken({prompt:prompt}); }
+
+// user taps the button
+function connectDrive(){
+  if(!navigator.onLine){ driveStatus('No internet connection','var(--bad)'); return; }
+  if(!gisReady()){ driveStatus('Google is still loading — try again in a moment','var(--warn)'); return; }
+  driveStatus('Connecting…','var(--muted)');
+  drivePending='sync';
+  requestToken(driveToken?'':'consent');
+}
+
+// ---- Drive REST helpers (plain fetch, no gapi) ----
+async function driveFind(){
+  const q=encodeURIComponent(`name='${DRIVE_FILENAME}' and trashed=false`);
+  const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,modifiedTime)`,
+    {headers:{Authorization:'Bearer '+driveToken}});
+  if(!r.ok) throw new Error('find '+r.status);
+  const j=await r.json();
+  return (j.files && j.files[0]) || null;
+}
+async function driveRead(id){
+  const r=await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:{Authorization:'Bearer '+driveToken}});
+  if(!r.ok) throw new Error('read '+r.status);
+  return await r.json();
+}
+async function driveCreate(text){
+  const boundary='schengen'+Date.now(), meta={name:DRIVE_FILENAME,mimeType:'application/json'};
+  const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+
+             '\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+text+'\r\n--'+boundary+'--';
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {method:'POST',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'multipart/related; boundary='+boundary},body});
+  if(!r.ok) throw new Error('create '+r.status);
+  return (await r.json()).id;
+}
+async function driveUpdate(id,text){
+  const r=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,
+    {method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:text});
+  if(!r.ok) throw new Error('update '+r.status);
+}
+
+// pull → merge → push (never a blind overwrite — the John-Finance data-loss lesson)
+async function doFullSync(){
+  try{
+    driveStatus('Syncing…','var(--muted)');
+    let cloud={stays:[]};
+    const f=await driveFind();
+    if(f){ driveFileId=f.id; try{ cloud=await driveRead(f.id); }catch(e){ cloud={stays:[]}; } }
+    stays=mergeStays(stays, cloud.stays); render();
+    try{ localStorage.setItem('schengenStays',JSON.stringify(stays)); }catch(e){}
+    const payload=JSON.stringify({stays,updatedAt:Date.now()});
+    if(driveFileId) await driveUpdate(driveFileId,payload); else driveFileId=await driveCreate(payload);
+    driveConnected=true;
+    try{ localStorage.setItem('schengenDriveOn','1'); }catch(e){}
+    driveBtnLabel('☁️ Google Drive'); driveStatus('🟢 Synced across your devices','var(--good)');
+  }catch(e){ console.warn('drive sync failed',e); driveStatus('Sync failed — tap to retry','var(--bad)'); }
+}
+
+function schedulePush(){
+  if(!driveConnected) return;
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(()=>{ if(tokenValid()) doPush(); else { drivePending='push'; requestToken(''); } }, 900);
+}
+async function doPush(){
+  try{
+    driveStatus('Saving…','var(--muted)');
+    const payload=JSON.stringify({stays,updatedAt:Date.now()});
+    if(driveFileId) await driveUpdate(driveFileId,payload); else driveFileId=await driveCreate(payload);
+    driveStatus('🟢 Synced across your devices','var(--good)');
+  }catch(e){ console.warn('drive push failed',e); driveStatus('Save failed — check connection','var(--bad)'); }
+}
+
+// on load: reconnect silently only if a valid token is still cached (no surprise popups)
+function driveAutoReconnect(){
+  if(localStorage.getItem('schengenDriveOn')!=='1') return;
+  try{ const s=JSON.parse(localStorage.getItem('schengenDriveTok')||'null'); if(s){ driveToken=s.t; driveTokenExp=s.e; } }catch(e){}
+  driveBtnLabel('☁️ Google Drive');
+  const start=Date.now();
+  (function waitGis(){
+    if(gisReady()){
+      if(tokenValid()){ drivePending='sync'; doFullSync(); }
+      else { driveStatus('Tap to reconnect Google Drive','var(--warn)'); }
+    } else if(Date.now()-start<8000){ setTimeout(waitGis,300); }
+  })();
 }
 
 // total Schengen days used within the rolling 180-day window ending on `ref`
