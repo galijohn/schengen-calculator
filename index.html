@@ -600,7 +600,7 @@ async function doSetup(pin){
   let old=[]; try{ old=JSON.parse(localStorage.getItem('schengenStays')||'[]'); }catch(e){}
   stays=normalize(Array.isArray(old)?old:[]);
   localStorage.removeItem('schengenStays');
-  await persistVault(); unlockDone();
+  await persistVault(); unlockDone(); saveCredential(pin);
 }
 async function doUnlock(pin){
   const v=getVault(); if(!isVault(v)) return startLock();
@@ -609,7 +609,7 @@ async function doUnlock(pin){
   catch(e){ return lockErr('Wrong PIN. Try again.'); }
   cryptoKey=key; vaultSalt=salt; sessionPin=pin;
   try{ stays=normalize(await decBlob(key, v.data)); }catch(e){ stays=[]; }
-  unlockDone();
+  unlockDone(); saveCredential(pin);
 }
 function unlockDone(){
   hideLock(); render(); updateBioBtn();
@@ -618,6 +618,14 @@ function unlockDone(){
 function lockNow(){
   cryptoKey=null; sessionPin=null; stays=[]; render();
   startLock();
+}
+// explicitly ask the browser's password manager to remember the PIN (so it can autofill next time)
+async function saveCredential(pin){
+  try{
+    if(window.PasswordCredential && navigator.credentials){
+      await navigator.credentials.store(new PasswordCredential({id:'schengen-pin', name:'Schengen 90/180', password:pin}));
+    }
+  }catch(e){}
 }
 // auto-lock when the app is left / backgrounded (short grace + suspend so system dialogs don't trip it)
 function scheduleAutoLock(){
