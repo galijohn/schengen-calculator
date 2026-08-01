@@ -767,7 +767,7 @@ function makeTokenClient(){
         try{ localStorage.setItem('schengenDriveTok',JSON.stringify({t:driveToken,e:driveTokenExp})); }catch(e){}
         const act=drivePending; drivePending=null;
         if(act==='push') doPush(); else doFullSync();
-      } else { driveStatus('Google sign-in failed','var(--bad)'); }
+      } else { drivePending=null; driveBtnLabel('☁️ Sync with Google Drive'); driveStatus('Tap “Sync with Google Drive” to reconnect','var(--warn)'); }
     }
   });
   return tokenClient;
@@ -877,7 +877,7 @@ function driveAutoReconnect(){
   (function waitGis(){
     if(gisReady()){
       if(tokenValid()){ drivePending='sync'; doFullSync(); }
-      else { driveStatus('Tap to reconnect Google Drive','var(--warn)'); }
+      else { driveStatus('Reconnecting…','var(--muted)'); drivePending='sync'; requestToken(''); }   // silent refresh — no popup if signed into Google
     } else if(Date.now()-start<8000){ setTimeout(waitGis,300); }
   })();
 }
