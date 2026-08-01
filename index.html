@@ -404,8 +404,8 @@ function addStay(){
   const exit=toISO(document.getElementById('exit').value);
   if(!entry||!exit){return showErr("⚠️ Enter both dates as dd/mm/yyyy.");}
   if(parse(exit)<parse(entry)){return showErr("⚠️ The exit date is before the entry date — please check.");}
-  if(editIndex>=0){ stays[editIndex]={country,entry,exit}; editIndex=-1; document.getElementById('addBtn').textContent='Add'; }
-  else { stays.push({country,entry,exit}); }
+  if(editIndex>=0){ stays[editIndex]={...stays[editIndex],country,entry,exit,del:false,m:Date.now()}; editIndex=-1; document.getElementById('addBtn').textContent='Add'; }
+  else { stays.push({id:uid(),country,entry,exit,del:false,m:Date.now()}); }
   stays.sort((a,b)=>parse(a.entry)-parse(b.entry));
   save(); document.getElementById('addErr').style.display='none';
   document.getElementById('entry').value=''; document.getElementById('exit').value='';
@@ -421,7 +421,7 @@ function editStay(i){
   document.getElementById('country').closest('.card').scrollIntoView({behavior:'smooth',block:'center'});
 }
 function showErr(m){const e=document.getElementById('addErr');e.textContent=m;e.style.display='block';}
-function del(i){stays.splice(i,1);save();render();}
+function del(i){ stays[i]={...stays[i],del:true,m:Date.now()}; save(); render(); }   // soft-delete (tombstone) so it syncs
 function save(){ persistVault(); }   // encrypt + persist to localStorage, file, and Drive
 
 // ---- real data file: Save/Open via File System Access API (Chromium), with
@@ -607,7 +607,7 @@ async function doSetup(pin){
   vaultSalt=crypto.getRandomValues(new Uint8Array(16));
   sessionPin=pin; cryptoKey=await deriveKey(pin, vaultSalt);
   let old=[]; try{ old=JSON.parse(localStorage.getItem('schengenStays')||'[]'); }catch(e){}
-  stays=Array.isArray(old)?old.filter(s=>s&&s.country&&s.entry&&s.exit):[];
+  stays=normalize(Array.isArray(old)?old:[]);
   localStorage.removeItem('schengenStays');
   await persistVault(); unlockDone();
 }
@@ -617,7 +617,7 @@ async function doUnlock(pin){
   try{ if(await decBlob(key, v.verify)!=='schengen-ok') throw 0; }
   catch(e){ return lockErr('Wrong PIN. Try again.'); }
   cryptoKey=key; vaultSalt=salt; sessionPin=pin;
-  try{ stays=await decBlob(key, v.data); }catch(e){ stays=[]; }
+  try{ stays=normalize(await decBlob(key, v.data)); }catch(e){ stays=[]; }
   unlockDone();
 }
 function unlockDone(){
@@ -676,7 +676,7 @@ async function biometricUnlock(auto){
     const v=getVault();
     if(await decBlob(key, v.verify)!=='schengen-ok'){ return lockErr('Fingerprint unlock failed — use your PIN.'); }
     cryptoKey=key; vaultSalt=_unb64(v.salt);
-    stays=await decBlob(key, v.data); unlockDone();
+    stays=normalize(await decBlob(key, v.data)); unlockDone();
   }catch(e){
     if(auto && e && e.name==='NotAllowedError') return;   // browser needs a tap — the button stays
     console.warn(e); if(!auto) lockErr('Fingerprint unlock failed — use your PIN.');
@@ -695,11 +695,23 @@ function driveBtnLabel(t){ const b=document.getElementById('driveBtn'); if(b) b.
 function gisReady(){ return typeof google!=='undefined' && google.accounts && google.accounts.oauth2; }
 function tokenValid(){ return driveToken && Date.now()<driveTokenExp; }
 
-// merge two trip lists without ever losing an entry (union by country|entry|exit)
-function sig(s){ return s.country+'|'+s.entry+'|'+s.exit; }
+// Each trip carries a stable id, a last-modified time (m), and a soft-delete flag (del).
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function normalize(arr){
+  return (arr||[]).filter(s=>s&&s.country&&s.entry&&s.exit).map(s=>({
+    id: s.id || ('sig:'+s.country+'|'+s.entry+'|'+s.exit),   // deterministic id for legacy records
+    country:s.country, entry:s.entry, exit:s.exit,
+    m: s.m||1, del: !!s.del
+  }));
+}
+// Merge two trip lists by id, keeping the most-recently-modified version of each (tombstones
+// included) so a delete on one device propagates and never resurrects.
 function mergeStays(a,b){
   const m=new Map();
-  [...(a||[]),...(b||[])].forEach(s=>{ if(s&&s.country&&s.entry&&s.exit) m.set(sig(s),{country:s.country,entry:s.entry,exit:s.exit}); });
+  [...normalize(a),...normalize(b)].forEach(s=>{
+    const ex=m.get(s.id);
+    if(!ex || (s.m||0) >= (ex.m||0)) m.set(s.id, s);
+  });
   return [...m.values()].sort((x,y)=>parse(x.entry)-parse(y.entry));
 }
 
@@ -834,6 +846,7 @@ function usedOn(ref){
   const winStart=new Date(ref.getTime()-(WINDOW-1)*DAY);
   let used=0;
   stays.forEach(s=>{
+    if(s.del) return;
     const oS=new Date(Math.max(parse(s.entry),winStart)), oE=new Date(Math.min(parse(s.exit),ref));
     if(oS<=oE) used+=inclusiveDays(oS,oE);
   });
@@ -870,10 +883,11 @@ function render(){
 
   const body=document.getElementById('staysBody');
   body.innerHTML='';
-  document.getElementById('emptyMsg').style.display = stays.length? 'none':'block';
+  document.getElementById('emptyMsg').style.display = stays.some(s=>!s.del)? 'none':'block';
 
   let used=0; const perCountry={};
   stays.forEach((s,i)=>{
+    if(s.del) return;   // skip deleted trips
     const e=parse(s.entry), x=parse(s.exit);
     const total=inclusiveDays(e,x);
     const oS=new Date(Math.max(e,winStart)), oE=new Date(Math.min(x,ref));
