@@ -252,13 +252,9 @@
 
   <footer id="footer">
     <div class="wrap">
-      <button class="btn-sm" onclick="saveToFile()">💾 Save to file</button>
-      <button class="btn-sm" onclick="openFile()">📂 Open file</button>
-      <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importData(event)">
       <button class="btn-sm" id="driveBtn" onclick="connectDrive()">☁️ Sync with Google Drive</button>
       <button class="btn-sm" id="bioEnableBtn" onclick="enableBiometric()">👆 Enable fingerprint</button>
       <button class="btn-sm" onclick="lockNow()">🔒 Lock now</button>
-      <span id="fileStatus" style="font-size:12px;color:var(--good);font-weight:600"></span>
       <span id="driveStatus" style="font-size:12px;font-weight:600;color:var(--muted)"></span>
     </div>
   </footer>
