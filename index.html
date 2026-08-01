@@ -108,7 +108,24 @@
   details summary:before{content:"\25B8  ";}
   details[open] summary:before{content:"\25BE  ";}
 
-  @media(max-width:520px){ h1{padding-right:84px;font-size:22px} body{padding:16px} }
+  @media(max-width:560px){
+    h1{padding-right:80px;font-size:21px}
+    .sub{font-size:13px}
+    #topbar{padding:10px 14px}
+    #scrollBody{padding:14px}
+    #footer{padding:8px 12px}
+    #footer .wrap{gap:6px}
+    .btn-sm{padding:7px 11px;font-size:12.5px}
+    .card{padding:14px}
+    /* "My stays": turn the wide table into stacked cards so nothing is cut off */
+    table thead{display:none}
+    #staysBody tr{display:block;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:4px 2px}
+    #staysBody td{display:flex;justify-content:space-between;align-items:center;border:none;padding:6px 12px;font-size:14px}
+    #staysBody td::before{content:attr(data-label);font-weight:600;color:var(--muted)}
+    #staysBody td.rowacts{justify-content:flex-end;gap:10px;padding-top:8px}
+    #staysBody td.rowacts::before{content:none}
+    #staysBody .edit,#staysBody .del{font-size:20px;padding:4px 10px}
+  }
   .disc{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
 
   /* lock screen */
@@ -866,11 +883,11 @@ function render(){
     if(winDays>0) perCountry[s.country]=(perCountry[s.country]||0)+winDays;
 
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${flagFor(s.country)}${s.country}</td>
-      <td>${fmt(e)}</td><td>${fmt(x)}</td>
-      <td>${total}</td>
-      <td class="${winDays>0?'in-win':'out-win'}">${winDays>0?winDays+' ✓':'—'}</td>
-      <td style="white-space:nowrap"><button class="edit" title="Edit" onclick="editStay(${i})">✎</button><button class="del" title="Delete" onclick="del(${i})">✕</button></td>`;
+    tr.innerHTML=`<td data-label="Country">${flagFor(s.country)}${s.country}</td>
+      <td data-label="Entry">${fmt(e)}</td><td data-label="Exit">${fmt(x)}</td>
+      <td data-label="Days">${total}</td>
+      <td data-label="Counted" class="${winDays>0?'in-win':'out-win'}">${winDays>0?winDays+' ✓':'—'}</td>
+      <td class="rowacts" style="white-space:nowrap"><button class="edit" title="Edit" onclick="editStay(${i})">✎</button><button class="del" title="Delete" onclick="del(${i})">✕</button></td>`;
     body.appendChild(tr);
   });
 
