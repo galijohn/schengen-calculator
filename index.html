@@ -103,7 +103,8 @@
 
   /* lock screen */
   #lockScreen{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
-    background:transparent;padding:20px}
+    background:var(--bg);padding:20px}
+  body.locked > *:not(#lockScreen){display:none!important}   /* hide the whole app while locked */
   .lockCard{background:var(--card);border-radius:20px;padding:28px 24px;max-width:340px;width:100%;
     text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
   .lockCard img{width:72px;height:72px;margin-bottom:12px}
@@ -500,8 +501,8 @@ async function persistVault(){
 // ---- lock screen ----
 let lockMode='enter';
 const _le=id=>document.getElementById(id);
-function showLock(){ _le('lockScreen').style.display='flex'; }
-function hideLock(){ _le('lockScreen').style.display='none'; }
+function showLock(){ document.body.classList.add('locked'); _le('lockScreen').style.display='flex'; }
+function hideLock(){ document.body.classList.remove('locked'); _le('lockScreen').style.display='none'; }
 function lockErr(m){ _le('lockErr').textContent=m||''; }
 
 function startLock(){
