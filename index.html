@@ -193,13 +193,6 @@
   <!-- FUTURE PLANNING CHECK -->
   <div id="projection" style="display:none;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:14px;font-weight:600;text-align:center"></div>
 
-  <!-- RE-ENTRY -->
-  <div class="card">
-    <h2>🔓 When can I re-enter?</h2>
-    <button class="btn" onclick="checkReentry()">Calculate earliest re-entry date</button>
-    <div id="reentryResult" style="margin-top:12px;font-size:14px"></div>
-  </div>
-
   <!-- ADD STAY -->
   <div class="card">
     <h2>➕ Add a stay</h2>
@@ -863,27 +856,14 @@ function futureCheck(){
 }
 
 // earliest future date on which allowance frees up (old days roll out of the 180-day window)
-function checkReentry(){
-  const box=document.getElementById('reentryResult');
-  const today=parse(new Date().toISOString().slice(0,10));
-  let res=null;
-  for(let i=0;i<=366;i++){
-    const D=new Date(today.getTime()+i*DAY);
-    const u=usedOn(D);
-    if(u<LIMIT){ res={D,avail:LIMIT-u,i}; break; }
+// earliest future date on which you'd be back under 90 (only shown when currently over/at the limit)
+function earliestReentry(){
+  const t0=dayNum(parse(new Date().toISOString().slice(0,10)));
+  for(let i=0;i<=400;i++){
+    const D=dayToDate(t0+i);
+    if(usedOn(D)<LIMIT) return {date:D, i};
   }
-  if(!res){
-    box.innerHTML='<span style="color:var(--bad)">Even a year from now you would still be at the limit — review your entries.</span>';
-    return;
-  }
-  if(res.i===0){
-    box.innerHTML=`<span style="color:var(--good);font-weight:600">✓ You can enter today.</span> `+
-      `You currently have <b>${res.avail}</b> day${res.avail>1?'s':''} available.`;
-  } else {
-    box.innerHTML=`<span style="color:var(--teal-dark);font-weight:700;font-size:16px">${fmt(res.D)}</span> `+
-      `<span style="color:var(--muted)">(in ${res.i} day${res.i>1?'s':''})</span><br>`+
-      `On that date you'll have <b>${res.avail}</b> day${res.avail>1?'s':''} available — and more free up as older stays keep rolling out of the 180-day window.`;
-  }
+  return null;
 }
 
 function render(){
@@ -944,6 +924,12 @@ function render(){
     v.classList.add('v-good'); vd.textContent=remaining; vl.textContent='days remaining ✓';
     vn.textContent=`You've used ${used} of ${LIMIT} days in the 180-day window (${fmt(winStart)} – ${fmt(ref)}).`;
     bar.style.background='var(--good)';
+  }
+
+  // at/over the limit → automatically show the earliest date you can re-enter
+  if(remaining<=0){
+    const r=earliestReentry();
+    if(r && r.i>0) vn.textContent += ` You can re-enter on ${fmt(r.date)}.`;
   }
 
   // forward-looking planning banner (only when there are trips ending in the future)
