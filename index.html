@@ -405,7 +405,7 @@ function addStay(){
   if(!entry||!exit){return showErr("⚠️ Enter both dates as dd/mm/yyyy.");}
   if(parse(exit)<parse(entry)){return showErr("⚠️ The exit date is before the entry date — please check.");}
   if(editIndex>=0){ stays[editIndex]={...stays[editIndex],country,entry,exit,del:false,m:Date.now()}; editIndex=-1; document.getElementById('addBtn').textContent='Add'; }
-  else { stays.push({id:uid(),country,entry,exit,del:false,m:Date.now()}); }
+  else { stays.push({id:'sig:'+country+'|'+entry+'|'+exit,country,entry,exit,del:false,m:Date.now()}); }
   stays.sort((a,b)=>parse(a.entry)-parse(b.entry));
   save(); document.getElementById('addErr').style.display='none';
   document.getElementById('entry').value=''; document.getElementById('exit').value='';
