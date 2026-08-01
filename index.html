@@ -954,7 +954,7 @@ function earliestReentry(){
 }
 
 // ---- rolling timeline (real trips; window + months scroll together) ----
-let tlBars=[];
+let tlBars=[], tlMaxE=0;
 function renderTimeline(){
   const tl=document.getElementById('tl'), today=document.getElementById('tlToday');
   tlBars.forEach(b=>b.el.remove()); tlBars=[];
@@ -976,6 +976,7 @@ function renderTimeline(){
   const todayD=dayNum(parse(new Date().toISOString().slice(0,10)));
   let minE=Infinity, maxE=-Infinity;
   tlBars.forEach(b=>{ minE=Math.min(minE,b.s); maxE=Math.max(maxE,b.e); });
+  tlMaxE=maxE;
   const sMin=Math.min(todayD, minE), sMax=Math.max(todayD, maxE+185);   // from first trip until the last fully rolls off
   const sl=document.getElementById('tlAsof');
   const cur=sl.dataset.set ? +sl.value : todayD;
@@ -984,7 +985,7 @@ function renderTimeline(){
 }
 function updateTimeline(){
   const sl=document.getElementById('tlAsof'); if(!sl) return;
-  const asof=+sl.value, VIS=200, vStart=asof-189;
+  const asof=+sl.value, vStart=asof-189, vEnd=Math.max(asof+91, tlMaxE+15), VIS=vEnd-vStart;   // extend right to include future trips
   const P=d=>(d-vStart)/VIS*100;
   document.getElementById('tlWin').style.left=P(asof-179)+'%';
   document.getElementById('tlWin').style.width=(P(asof+1)-P(asof-179))+'%';
