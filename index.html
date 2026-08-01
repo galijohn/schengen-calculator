@@ -382,7 +382,11 @@ function pickCountry(name){
 
 function parse(d){return new Date(d+"T00:00:00");}
 function fmt(d){const p=n=>String(n).padStart(2,'0');return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();}   // European dd/mm/yyyy
-function inclusiveDays(a,b){return Math.round((b-a)/DAY)+1;}
+// DST-safe date math: work in whole calendar days (UTC), never in raw milliseconds,
+// so a day is always a day regardless of summer/winter clock changes.
+function dayNum(d){ return Math.round(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/DAY); }
+function dayToDate(n){ const d=new Date(n*DAY); return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()); }
+function inclusiveDays(a,b){ return dayNum(b)-dayNum(a)+1; }
 
 // dd/mm/yyyy text-input helpers (native date inputs can't be forced to European format)
 function fmtDateInput(el){
@@ -846,12 +850,12 @@ function driveAutoReconnect(){
 
 // total Schengen days used within the rolling 180-day window ending on `ref`
 function usedOn(ref){
-  const winStart=new Date(ref.getTime()-(WINDOW-1)*DAY);
+  const refD=dayNum(ref), winStartD=refD-(WINDOW-1);
   let used=0;
   stays.forEach(s=>{
     if(s.del) return;
-    const oS=new Date(Math.max(parse(s.entry),winStart)), oE=new Date(Math.min(parse(s.exit),ref));
-    if(oS<=oE) used+=inclusiveDays(oS,oE);
+    const oS=Math.max(dayNum(parse(s.entry)),winStartD), oE=Math.min(dayNum(parse(s.exit)),refD);
+    if(oS<=oE) used+=(oE-oS+1);
   });
   return used;
 }
@@ -893,7 +897,8 @@ function checkReentry(){
 
 function render(){
   const ref=parse(toISO(document.getElementById('refDate').value)||new Date().toISOString().slice(0,10));
-  const winStart=new Date(ref.getTime()-(WINDOW-1)*DAY);
+  const refD=dayNum(ref), winStartD=refD-(WINDOW-1);
+  const winStart=dayToDate(winStartD);
 
   const body=document.getElementById('staysBody');
   body.innerHTML='';
@@ -904,9 +909,9 @@ function render(){
     if(s.del) return;   // skip deleted trips
     const e=parse(s.entry), x=parse(s.exit);
     const total=inclusiveDays(e,x);
-    const oS=new Date(Math.max(e,winStart)), oE=new Date(Math.min(x,ref));
+    const oS=Math.max(dayNum(e),winStartD), oE=Math.min(dayNum(x),refD);
     let winDays=0;
-    if(oS<=oE) winDays=inclusiveDays(oS,oE);
+    if(oS<=oE) winDays=(oE-oS+1);
     used+=winDays;
     if(winDays>0) perCountry[s.country]=(perCountry[s.country]||0)+winDays;
 
