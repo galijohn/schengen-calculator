@@ -190,6 +190,9 @@
     <div class="barwrap"><div class="bar" id="v-bar" style="width:0%"></div></div>
   </div>
 
+  <!-- FUTURE PLANNING CHECK -->
+  <div id="projection" style="display:none;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:14px;font-weight:600;text-align:center"></div>
+
   <!-- REFERENCE DATE -->
   <div class="card">
     <div class="refline">
@@ -853,6 +856,17 @@ function usedOn(ref){
   return used;
 }
 
+// forward-looking: peak rolling-window usage across all trip end-dates + first date it would exceed 90
+function futureCheck(){
+  const today=parse(new Date().toISOString().slice(0,10));
+  const dates=[today];
+  stays.forEach(s=>{ if(!s.del) dates.push(parse(s.exit)); });
+  dates.sort((a,b)=>a-b);
+  let peak={used:usedOn(today),date:today}, firstOver=null;
+  dates.forEach(D=>{ const u=usedOn(D); if(u>peak.used) peak={used:u,date:D}; if(u>LIMIT && !firstOver) firstOver={used:u,date:D}; });
+  return {peak, firstOver};
+}
+
 // earliest future date on which allowance frees up (old days roll out of the 180-day window)
 function checkReentry(){
   const box=document.getElementById('reentryResult');
@@ -934,6 +948,23 @@ function render(){
     v.classList.add('v-good'); vd.textContent=remaining; vl.textContent='days remaining ✓';
     vn.textContent=`You've used ${used} of ${LIMIT} days in the 180-day window (${fmt(winStart)} – ${fmt(ref)}).`;
     bar.style.background='var(--good)';
+  }
+
+  // forward-looking planning banner (only when there are trips ending in the future)
+  const proj=document.getElementById('projection');
+  const today0=parse(new Date().toISOString().slice(0,10));
+  const hasFuture=stays.some(s=>!s.del && parse(s.exit)>today0);
+  if(!hasFuture){ proj.style.display='none'; }
+  else{
+    const fc=futureCheck();
+    proj.style.display='block';
+    if(fc.firstOver){
+      proj.style.background='var(--bad-bg)'; proj.style.color='var(--bad)';
+      proj.innerHTML=`⚠️ Planned trips exceed 90 days — on <b>${fmt(fc.firstOver.date)}</b> you'd reach <b>${fc.firstOver.used}</b> days in the window.`;
+    } else {
+      proj.style.background='var(--good-bg)'; proj.style.color='var(--good)';
+      proj.innerHTML=`✈️ Your planned trips stay within 90 — peak is <b>${fc.peak.used}</b> days on <b>${fmt(fc.peak.date)}</b>.`;
+    }
   }
 }
 </script>
