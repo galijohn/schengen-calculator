@@ -976,7 +976,7 @@ function renderTimeline(){
   const todayD=dayNum(parse(new Date().toISOString().slice(0,10)));
   let minE=Infinity, maxE=-Infinity;
   tlBars.forEach(b=>{ minE=Math.min(minE,b.s); maxE=Math.max(maxE,b.e); });
-  const sMin=Math.min(todayD, minE+90), sMax=Math.max(todayD, maxE+20);
+  const sMin=Math.min(todayD, minE), sMax=Math.max(todayD, maxE+185);   // from first trip until the last fully rolls off
   const sl=document.getElementById('tlAsof');
   const cur=sl.dataset.set ? +sl.value : todayD;
   sl.min=sMin; sl.max=sMax; sl.value=Math.max(sMin,Math.min(sMax,cur)); sl.dataset.set='1';
