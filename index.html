@@ -193,15 +193,6 @@
   <!-- FUTURE PLANNING CHECK -->
   <div id="projection" style="display:none;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:14px;font-weight:600;text-align:center"></div>
 
-  <!-- REFERENCE DATE -->
-  <div class="card">
-    <div class="refline">
-      <span>📅 Calculate as of:</span>
-      <input type="text" class="dtin" id="refDate" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" oninput="fmtDateInput(this)">
-      <span style="color:var(--muted);font-size:13px">(default: today — change it to check a future date)</span>
-    </div>
-  </div>
-
   <!-- RE-ENTRY -->
   <div class="card">
     <h2>🔓 When can I re-enter?</h2>
@@ -361,11 +352,9 @@ function toggleTheme(){
     document.getElementById('themeBtn').textContent='☀️ Light';
   }
   const today=new Date().toISOString().slice(0,10);
-  document.getElementById('refDate').value=isoToDDMM(today);
   document.getElementById('todayDisp').textContent='📆 Today: '+fmt(parse(today));
   document.getElementById('saveInfo').textContent=
     '🔒 Your trips are encrypted and locked with your PIN. Sync with Google Drive to see them on every device.';
-  document.getElementById('refDate').addEventListener('change',render);
   // defer so all lock/crypto declarations below are initialised before it runs
   setTimeout(startLock, 0);   // show the PIN screen; loading/sync happens after unlock
 })();
@@ -896,7 +885,7 @@ function checkReentry(){
 }
 
 function render(){
-  const ref=parse(toISO(document.getElementById('refDate').value)||new Date().toISOString().slice(0,10));
+  const ref=parse(new Date().toISOString().slice(0,10));   // always "as of today"
   const refD=dayNum(ref), winStartD=refD-(WINDOW-1);
   const winStart=dayToDate(winStartD);
 
