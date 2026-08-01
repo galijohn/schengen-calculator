@@ -340,15 +340,15 @@ function pickCountry(name){
 }
 
 function parse(d){return new Date(d+"T00:00:00");}
-function fmt(d){const p=n=>String(n).padStart(2,'0');return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();}
+function fmt(d){const p=n=>String(n).padStart(2,'0');return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear();}   // European dd/mm/yyyy
 function inclusiveDays(a,b){return Math.round((b-a)/DAY)+1;}
 
 function addStay(){
   const country=document.getElementById('country').value;
   const entry=document.getElementById('entry').value;
   const exit=document.getElementById('exit').value;
-  if(!entry||!exit){return showErr("Please fill in both entry and exit dates.");}
-  if(parse(exit)<parse(entry)){return showErr("Exit date must be on or after the entry date.");}
+  if(!entry||!exit){return showErr("⚠️ Please fill in both entry and exit dates.");}
+  if(parse(exit)<parse(entry)){return showErr("⚠️ The exit date is before the entry date — please check.");}
   stays.push({country,entry,exit});
   stays.sort((a,b)=>parse(a.entry)-parse(b.entry));
   save(); document.getElementById('addErr').style.display='none';
